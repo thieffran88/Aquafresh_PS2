@@ -6,7 +6,7 @@
 #   make shots      -> capturas de tela geradas no PC (pasta screenshots/)
 
 EE_BIN = aquafresh.elf
-EE_OBJS = src/main_ps2.o src/ui.o src/draw.o src/game.o src/font.o src/assets.o src/assets_bin.o src/audio.o src/audio_data.o src/audio_bin.o src/irx_bin.o
+EE_OBJS = src/main_ps2.o src/ui.o src/draw.o src/game.o src/font.o src/assets.o src/assets_bin.o src/lang.o src/audio.o src/audio_data.o src/audio_bin.o src/irx_bin.o
 # -Wa,-I: o assembler acha os modulos .irx do IOP para o .incbin de src/irx_bin.S
 EE_INCS = -I$(GSKIT)/include -Isrc -Wa,-I$(PS2SDK)/iop/irx
 EE_LDFLAGS = -L$(GSKIT)/lib
@@ -15,7 +15,7 @@ EE_CFLAGS = -std=gnu99
 
 HOST_CC ?= gcc
 HOST_SRCS = src/ui.c src/draw.c src/game.c src/font.c src/assets.c src/assets_bin.S \
-            src/audio.c src/audio_data.c src/audio_bin.S
+            src/lang.c src/audio.c src/audio_data.c src/audio_bin.S
 
 .PHONY: all clean packed iso test shots docker font assets
 

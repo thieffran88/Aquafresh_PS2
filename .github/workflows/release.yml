@@ -1,0 +1,47 @@
+name: Release
+
+# Publica um release com o ELF (e a ISO) quando uma tag vX.Y.Z e enviada.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ps2dev/ps2dev:latest
+    steps:
+      - name: Dependencias
+        run: apk add --no-cache make xorriso
+      - uses: actions/checkout@v4
+      - name: Compilar ELF e ISO
+        run: |
+          make all packed iso
+          mkdir -p out
+          cp aquafresh-packed.elf out/AquafreshPS2.elf
+          cp aquafresh.iso out/AquafreshPS2.iso
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: out/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: out
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/AquafreshPS2.elf out/AquafreshPS2.iso \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Aquafresh PS2 $GITHUB_REF_NAME" \
+            --notes-file .github/release_notes.md

@@ -236,7 +236,10 @@ int main(int argc, char **argv)
     ui_init(2024);
     audio_init();
 
-    step(0, 40);
+    step(0, 30);
+    shot("00_idioma");
+    press(BTN_CROSS);               /* portugues (padrao) */
+    step(0, 20);
     shot("01_titulo");
     press(BTN_DOWN); press(BTN_DOWN);
     press(BTN_CROSS);
@@ -312,6 +315,46 @@ int main(int argc, char **argv)
     press(BTN_RIGHT);
     shot("11_resultado_outro");
     step(0, 240);
+
+    /* outros idiomas: menu > IDIOMA > ingles/espanhol */
+    {
+        static const char *names[2] = { "en", "es" };
+        int l, k;
+        char nm[64];
+        press(BTN_CIRCLE);                       /* resultado -> titulo */
+        for (l = 0; l < 2; l++) {
+            for (k = 0; k < 3; k++) press(BTN_DOWN);
+            press(BTN_CROSS);                    /* IDIOMA */
+            press(BTN_DOWN);                     /* PT -> EN, depois EN -> ES */
+            snprintf(nm, sizeof(nm), "12_%s_idioma", names[l]); shot(nm);
+            press(BTN_CROSS);
+            step(0, 10);
+            snprintf(nm, sizeof(nm), "13_%s_titulo", names[l]); shot(nm);
+            press(BTN_DOWN); press(BTN_DOWN);    /* COMO JOGAR */
+            press(BTN_CROSS);
+            snprintf(nm, sizeof(nm), "14_%s_regras", names[l]); shot(nm);
+            press(BTN_RIGHT); press(BTN_RIGHT);
+            snprintf(nm, sizeof(nm), "15_%s_pontos", names[l]); shot(nm);
+            press(BTN_RIGHT);
+            snprintf(nm, sizeof(nm), "16_%s_controles", names[l]); shot(nm);
+            press(BTN_CIRCLE);
+            press(BTN_UP); press(BTN_UP);        /* 1 JOGADOR */
+            press(BTN_CROSS);
+            snprintf(nm, sizeof(nm), "17_%s_config", names[l]); shot(nm);
+            press(BTN_START);
+            for (k = 0; k < 6; k++) {            /* algumas rodadas rapidas */
+                step(0, 200);
+                press(BTN_TRIANGLE); press(BTN_CROSS); press(BTN_CROSS);
+            }
+            step(0, 60);
+            snprintf(nm, sizeof(nm), "18_%s_partida", names[l]); shot(nm);
+            press(BTN_START);
+            press(BTN_DOWN); press(BTN_DOWN);
+            snprintf(nm, sizeof(nm), "19_%s_pausa", names[l]); shot(nm);
+            press(BTN_DOWN); press(BTN_DOWN);
+            press(BTN_CROSS);                    /* sair para o menu */
+        }
+    }
     if (argc > 2)
         write_wav(argv[2]);
     return 0;

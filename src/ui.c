@@ -7,8 +7,9 @@
 #include "game.h"
 #include "draw.h"
 #include "audio.h"
+#include "lang.h"
 
-enum { ST_TITLE, ST_SETUP, ST_RULES, ST_PLAY, ST_PAUSE, ST_RESULT };
+enum { ST_TITLE, ST_SETUP, ST_RULES, ST_PLAY, ST_PAUSE, ST_RESULT, ST_LANG };
 enum { PH_MOVE, PH_MOVE_DEST, PH_PICK, PH_DROP, PH_CPU, PH_END };
 
 /* ---------------------------------------------------------------- layout */
@@ -29,7 +30,8 @@ enum { PH_MOVE, PH_MOVE_DEST, PH_PICK, PH_DROP, PH_CPU, PH_END };
 #define HELP_Y    421
 
 /* ----------------------------------------------------------------- estado */
-static int state = ST_TITLE, rules_return = ST_TITLE;
+static int state = ST_LANG, rules_return = ST_TITLE;
+static int lang_sel = LANG_PT;
 static unsigned int frame_no, seed_base;
 static unsigned int prev_held, pressed;
 static int repeat_btn, repeat_timer;
@@ -71,13 +73,13 @@ static struct {
 static const char *player_name(int p)
 {
     if (num_humans == 1)
-        return p == 0 ? "VOCE" : "CPU";
-    return p == 0 ? "JOGADOR 1" : "JOGADOR 2";
+        return tr(p == 0 ? S_YOU : S_CPU);
+    return tr(p == 0 ? S_PLAYER1 : S_PLAYER2);
 }
 
 static const char *role_name(int role)
 {
-    return role == ROLE_COLOR ? "CORES" : "ANIMAIS";
+    return tr(role == ROLE_COLOR ? S_COLORS : S_ANIMALS);
 }
 
 static void cell_pos(int cell, float *x, float *y)
@@ -259,11 +261,11 @@ static void update_play(void)
             phase = PH_PICK;
         } else if (pressed & BTN_CROSS) {
             if (game.board[cell] == EMPTY) {
-                set_msg("ESCOLHA UMA CRIATURA OU APERTE ^ PARA PULAR");
+                set_msg(tr(S_MSG_PICK_OR_SKIP));
             } else {
                 ntargets = game_move_targets(&game, cell, targets);
                 if (ntargets == 0) {
-                    set_msg("ESSA CRIATURA ESTA CERCADA");
+                    set_msg(tr(S_MSG_SURROUNDED));
                 } else {
                     sel_cell = cell;
                     phase = PH_MOVE_DEST;
@@ -283,7 +285,7 @@ static void update_play(void)
                 sel_cell = -1;
                 phase = PH_PICK;
             } else {
-                set_msg("SO EM LINHA RETA, SEM PULAR CRIATURAS");
+                set_msg(tr(S_MSG_STRAIGHT));
             }
         }
         break;
@@ -319,7 +321,7 @@ static void update_play(void)
             phase = PH_PICK;
         } else if (pressed & BTN_CROSS) {
             if (game.board[cell] != EMPTY)
-                set_msg("ESCOLHA UMA CASA VAZIA");
+                set_msg(tr(S_MSG_EMPTY));
             else
                 finish_place(pool_sel, cell);
         }
@@ -362,7 +364,7 @@ static void update_play(void)
 
 /* -------------------------------------------------------------- atualizar */
 
-#define MENU_ITEMS 3
+#define MENU_ITEMS 4
 
 static void update_title(void)
 {
@@ -370,7 +372,10 @@ static void update_title(void)
     if (pressed & BTN_DOWN) menu_sel = (menu_sel + 1) % MENU_ITEMS;
     if (pressed & (BTN_CROSS | BTN_START)) {
         seed_base ^= frame_no;
-        if (menu_sel == 2) {
+        if (menu_sel == 3) {
+            lang_sel = g_lang;
+            state = ST_LANG;
+        } else if (menu_sel == 2) {
             rules_page = 0;
             rules_return = ST_TITLE;
             state = ST_RULES;
@@ -413,7 +418,6 @@ static void update_setup(void)
     }
 }
 
-#define RULES_PAGES 4
 
 static void update_rules(void)
 {
@@ -430,6 +434,18 @@ static void update_rules(void)
 }
 
 #define PAUSE_ITEMS 5
+
+static void update_lang(void)
+{
+    if (pressed & (BTN_UP | BTN_LEFT))    lang_sel = (lang_sel + NUM_LANGS - 1) % NUM_LANGS;
+    if (pressed & (BTN_DOWN | BTN_RIGHT)) lang_sel = (lang_sel + 1) % NUM_LANGS;
+    g_lang = lang_sel;              /* a tela ja mostra o idioma escolhido */
+    if (pressed & (BTN_CROSS | BTN_START)) {
+        seed_base ^= frame_no;
+        menu_sel = 0;
+        state = ST_TITLE;
+    }
+}
 
 static void update_pause(void)
 {
@@ -474,7 +490,8 @@ void ui_init(unsigned int seed)
 {
     draw_init();
     seed_base = seed ? seed : 1u;
-    state = ST_TITLE;
+    state = ST_LANG;                /* o jogo comeca escolhendo o idioma */
+    lang_sel = g_lang = LANG_PT;
 }
 
 int ui_state(void) { return state; }
@@ -504,7 +521,7 @@ void ui_update(unsigned int held)
         int before[12], after_[12], moved_ui = 0, changed, i;
         int st0 = state, ph0 = phase;
         int *watch[12] = { &cur_r, &cur_c, &pool_sel, &menu_sel, &setup_sel, &pause_sel,
-                           &rules_page, &opt_role, &opt_level, &opt_first, &result_view, &state };
+                           &rules_page, &opt_role, &opt_level, &opt_first, &lang_sel, &state };
         for (i = 0; i < 12; i++)
             before[i] = *watch[i];
         sfx_this_frame = 0;
@@ -521,6 +538,7 @@ void ui_update(unsigned int held)
         case ST_PLAY:   update_play(); break;
         case ST_PAUSE:  update_pause(); break;
         case ST_RESULT: update_result(); break;
+        case ST_LANG:   update_lang(); break;
         }
 
         for (i = 0; i < 11; i++) {
@@ -541,7 +559,8 @@ void ui_update(unsigned int held)
     /* musica de cada tela */
     {
         int want = MUS_GAME;
-        if (state == ST_TITLE || state == ST_SETUP || (state == ST_RULES && rules_return == ST_TITLE))
+        if (state == ST_TITLE || state == ST_SETUP || state == ST_LANG ||
+            (state == ST_RULES && rules_return == ST_TITLE))
             want = MUS_MENU;
         if (want != music_wanted) {
             music_wanted = want;
@@ -757,7 +776,7 @@ static void draw_pool(int interactive)
 {
     int i;
     char buf[24];
-    draw_text(PANEL_X + 4, POOL_Y - 24, 2, WHITE, "VIVEIRO");
+    draw_text(PANEL_X + 4, POOL_Y - 24, 2, WHITE, tr(S_POOL));
     for (i = 0; i < POOL_MAX; i++) {
         float x, y;
         pool_pos(i, &x, &y);
@@ -778,7 +797,7 @@ static void draw_pool(int interactive)
         int n = game.stock_n < 3 ? game.stock_n : 3;
         for (i = 0; i < n; i++)
             draw_tile_back(PANEL_X + 6 + i * 4, y - i * 3, 40, 35);
-        snprintf(buf, sizeof(buf), "ESTOQUE %d", game.stock_n);
+        snprintf(buf, sizeof(buf), tr(S_STOCK_FMT), game.stock_n);
         draw_text(PANEL_X + 62, y + 9, 2, WHITE, buf);
     }
 }
@@ -805,12 +824,12 @@ static void draw_phase_info(void)
 {
     const char *l = "";
     switch (phase) {
-    case PH_MOVE:      l = "1 MOVER"; break;
-    case PH_MOVE_DEST: l = "1 MOVER"; break;
+    case PH_MOVE:
+    case PH_MOVE_DEST: l = tr(S_PH_MOVE); break;
     case PH_PICK:
-    case PH_DROP:      l = "2 COLOCAR"; break;
-    case PH_CPU:       l = cpu_step == 0 ? "CPU PENSANDO..." : "CPU JOGANDO"; break;
-    default:           l = "RECIFE CHEIO!"; break;
+    case PH_DROP:      l = tr(S_PH_PLACE); break;
+    case PH_CPU:       l = tr(cpu_step == 0 ? S_CPU_THINKING : S_CPU_PLAYING); break;
+    default:           l = tr(S_REEF_FULL); break;
     }
     draw_text(PANEL_X + PANEL_W - text_width(l, 2), 26, 2, WHITE, l);
 }
@@ -834,22 +853,22 @@ static void draw_play(void)
     if (msg_timer > 0) {
         draw_help(msg, RGB(255, 170, 150));
     } else if (!interactive) {
-        draw_help(phase == PH_END ? "CONTANDO OS CARDUMES..." : "CPU JOGANDO...   START PAUSA",
+        draw_help(tr(phase == PH_END ? S_COUNTING : S_HELP_CPU),
                   WHITE);
     } else {
         const char *h = "";
         switch (phase) {
-        case PH_MOVE:      h = "x MOVER CRIATURA   ^ PULAR   START PAUSA"; break;
-        case PH_MOVE_DEST: h = "x ESCOLHER DESTINO   o CANCELAR"; break;
-        case PH_PICK:      h = game_first_turn(&game) ? "x ESCOLHER CRIATURA" : "x ESCOLHER CRIATURA   o VOLTAR"; break;
-        case PH_DROP:      h = "x COLOCAR   L1/R1 TROCAR   o VOLTAR"; break;
+        case PH_MOVE:      h = tr(S_HELP_MOVE); break;
+        case PH_MOVE_DEST: h = tr(S_HELP_DEST); break;
+        case PH_PICK:      h = tr(game_first_turn(&game) ? S_HELP_PICK_FIRST : S_HELP_PICK); break;
+        case PH_DROP:      h = tr(S_HELP_DROP); break;
         }
         draw_help(h, WHITE);
     }
 
     if (state == ST_PLAY && banner_timer > 0 && !is_cpu[game.turn]) {
         int a = banner_timer > 20 ? 255 : banner_timer * 255 / 20;
-        snprintf(buf, sizeof(buf), num_humans == 2 ? "VEZ DE %s" : "SUA VEZ!", player_name(game.turn));
+        snprintf(buf, sizeof(buf), tr(num_humans == 2 ? S_TURN_OF_FMT : S_YOUR_TURN), player_name(game.turn));
         draw_banner(buf, a);
     }
 }
@@ -867,13 +886,12 @@ static void draw_menu_item(float cx, float y, int scale, const char *s, int sel)
 
 static void draw_title(void)
 {
-    static const char *items[MENU_ITEMS] = { "1 JOGADOR", "2 JOGADORES", "COMO JOGAR" };
     int i;
-    draw_round_rect(SCREEN_W / 2 - 150, 290, 300, 128, 18, RGBA(10, 20, 50, 200));
-    draw_round_rect(SCREEN_W / 2 - 146, 294, 292, 120, 15, RGBA(20, 80, 160, 190));
+    draw_round_rect(SCREEN_W / 2 - 160, 262, 320, 160, 18, RGBA(10, 20, 50, 200));
+    draw_round_rect(SCREEN_W / 2 - 156, 266, 312, 152, 15, RGBA(20, 80, 160, 190));
     for (i = 0; i < MENU_ITEMS; i++)
-        draw_menu_item(SCREEN_W / 2, 304 + i * 38, 3, items[i], i == menu_sel);
-    draw_text_center(SCREEN_W / 2, 428, 2, WHITE, "x CONFIRMAR");
+        draw_menu_item(SCREEN_W / 2, 276 + i * 36, 3, tr(S_MENU_1P + i), i == menu_sel);
+    draw_text_center(SCREEN_W / 2, 428, 2, WHITE, tr(S_HELP_CONFIRM));
 }
 
 static void dim_screen(int a)
@@ -905,104 +923,68 @@ static void draw_option_row(float y, const char *label, const char *value, int s
 
 static void draw_setup(void)
 {
-    static const char *levels[3] = { "FACIL", "NORMAL", "DIFICIL" };
-    char buf[64];
     int row = 0;
     float y = 128;
     dim_screen(60);
-    draw_text_center(SCREEN_W / 2, 26, 5, WHITE, num_humans == 1 ? "1 JOGADOR" : "2 JOGADORES");
+    draw_text_center(SCREEN_W / 2, 26, 5, WHITE, tr(num_humans == 1 ? S_MENU_1P : S_MENU_2P));
     big_panel(70, 92, 500, 296);
 
     if (num_humans == 1) {
-        draw_option_row(y, "SEUS CARDUMES", role_name(opt_role), setup_sel == row++, 1);
+        draw_option_row(y, tr(S_OPT_YOUR_SCHOOLS), role_name(opt_role), setup_sel == row++, 1);
         y += 44;
-        draw_option_row(y, "DIFICULDADE", levels[opt_level], setup_sel == row++, 1);
+        draw_option_row(y, tr(S_OPT_DIFFICULTY), tr(S_EASY + opt_level), setup_sel == row++, 1);
         y += 44;
-        draw_option_row(y, "QUEM COMECA", opt_first == 0 ? "VOCE" : "CPU", setup_sel == row++, 1);
+        draw_option_row(y, tr(S_OPT_WHO_STARTS), player_name(opt_first), setup_sel == row++, 1);
         y += 44;
     } else {
-        draw_option_row(y, "JOGADOR 1 FORMA", role_name(opt_role), setup_sel == row++, 1);
+        draw_option_row(y, tr(S_OPT_P1_FORMS), role_name(opt_role), setup_sel == row++, 1);
         y += 44;
-        draw_option_row(y, "QUEM COMECA", opt_first == 0 ? "JOGADOR 1" : "JOGADOR 2",
-                        setup_sel == row++, 1);
+        draw_option_row(y, tr(S_OPT_WHO_STARTS), player_name(opt_first), setup_sel == row++, 1);
         y += 44;
     }
-    draw_option_row(y, "COMECAR PARTIDA!", 0, setup_sel == row, 0);
+    draw_option_row(y, tr(S_OPT_START), 0, setup_sel == row, 0);
 
-    /* quem forma o que */
-    y = 300;
-    draw_avatar(0, 96, y - 4, 60, 52);
-    snprintf(buf, sizeof(buf), "%s %s", player_name(0), role_name(opt_role));
-    draw_text(162, y, 2, WHITE, buf);
-    draw_mini_role(opt_role, 162, y + 24, 14);
-    draw_avatar(1, 336, y - 4, 60, 52);
-    snprintf(buf, sizeof(buf), "%s %s", player_name(1), role_name(opt_role ^ 1));
-    draw_text(402, y, 2, WHITE, buf);
-    draw_mini_role(opt_role ^ 1, 402, y + 24, 14);
-    draw_help("DIRECIONAL ALTERA   x CONFIRMAR   o VOLTAR", WHITE);
+    /* quem forma o que: nome, papel e icones em linhas separadas */
+    y = 292;
+    draw_avatar(0, 92, y + 6, 60, 52);
+    draw_text(160, y, 2, WHITE, player_name(0));
+    draw_text(160, y + 20, 2, RGB(150, 220, 255), role_name(opt_role));
+    draw_mini_role(opt_role, 160, y + 44, 14);
+    draw_avatar(1, 332, y + 6, 60, 52);
+    draw_text(400, y, 2, WHITE, player_name(1));
+    draw_text(400, y + 20, 2, RGB(150, 220, 255), role_name(opt_role ^ 1));
+    draw_mini_role(opt_role ^ 1, 400, y + 44, 14);
+    draw_help(tr(S_HELP_SETUP), WHITE);
 }
 
 static void draw_rules(void)
 {
-    static const char *titles[RULES_PAGES] = {
-        "OBJETIVO", "SEU TURNO", "PONTUACAO", "CONTROLES"
-    };
-    static const char *pages[RULES_PAGES][9] = {
-        { "CRIATURAS COLORIDAS NADAM PELO RECIFE.",
-          "UM JOGADOR FORMA CARDUMES DA MESMA COR,",
-          "O OUTRO CARDUMES DO MESMO ANIMAL.",
-          "",
-          "CARDUME = 2 OU MAIS CRIATURAS VIZINHAS",
-          "LADO A LADO (DIAGONAL NAO CONTA).",
-          "",
-          "QUANDO AS 36 CRIATURAS ENCHEREM O",
-          "RECIFE, QUEM TIVER MAIS PONTOS VENCE!" },
-        { "1 MOVER (OPCIONAL): DESLIZE UMA CRIATURA",
-          "  NA LINHA OU COLUNA, QUANTAS CASAS",
-          "  QUISER, SEM PULAR OUTRAS.",
-          "  (NAO EXISTE NO PRIMEIRO TURNO)",
-          "2 COLOCAR: PEGUE UMA CRIATURA DO",
-          "  VIVEIRO E PONHA NUMA CASA VAZIA.",
-          "3 REPOR: UMA CRIATURA DO ESTOQUE VAI",
-          "  PARA O VIVEIRO (AUTOMATICO).",
-          "QUALQUER UM PODE MOVER QUALQUER CRIATURA." },
-        { "CRIATURAS NO CARDUME  2  3  4  5   6",
-          "PONTOS                1  3  6  10  15",
-          "",
-          "UMA CRIATURA SOZINHA NAO VALE NADA.",
-          "UMA CRIATURA PODE CONTAR NUM CARDUME",
-          "DE COR E NUM DE ANIMAL AO MESMO TEMPO.",
-          "EMPATE: VENCE QUEM JOGOU EM SEGUNDO.",
-          "REVANCHE: OS PAPEIS SAO TROCADOS.",
-          "" },
-        { "DIRECIONAL   MOVE O CURSOR",
-          "x            CONFIRMA",
-          "o            VOLTA OU CANCELA",
-          "^            PULA O MOVIMENTO",
-          "L1 R1        TROCA A CRIATURA",
-          "START        PAUSA",
-          "SELECT       LIGA/DESLIGA A MUSICA",
-          "NA TELA FINAL O DIRECIONAL MOSTRA",
-          "OS CARDUMES DE CADA JOGADOR." },
-    };
+    static const char *nums[2][5] = { { "2", "3", "4", "5", "6" }, { "1", "3", "6", "10", "15" } };
     char buf[32];
-    int i;
+    int i, k;
     dim_screen(60);
     big_panel(18, 14, 604, 394);
-    draw_text(44, 30, 4, WHITE, titles[rules_page]);
+    draw_text(44, 30, 4, WHITE, tr(S_RULES_TITLE0 + rules_page));
     snprintf(buf, sizeof(buf), "%d/%d", rules_page + 1, RULES_PAGES);
     draw_text(596 - text_width(buf, 2), 40, 2, WHITE, buf);
-    for (i = 0; i < 9; i++) {
-        const char *ln = pages[rules_page][i];
-        /* coluna de botoes alinhada na pagina de controles */
-        if (rules_page == 3 && ln[0] && strlen(ln) > 13 && ln[12] == ' ') {
+    for (i = 0; i < RULES_LINES; i++) {
+        const char *ln = rules_line(rules_page, i);
+        float y = 80.0f + i * 28;
+        if (rules_page == 2 && i < 2) {
+            /* tabela de pontos em colunas fixas */
+            draw_text(44, y, 2, WHITE, ln);
+            for (k = 0; k < 5; k++)
+                draw_text(370 + k * 44 - text_width(nums[i][k], 2) / 2.0f, y, 2,
+                          i ? RGB(255, 225, 90) : WHITE, nums[i][k]);
+        } else if (rules_page == 3 && ln[0] && strlen(ln) > 13 && ln[12] == ' ') {
+            /* coluna de botoes alinhada na pagina de controles */
             char key[16];
             memcpy(key, ln, 12);
             key[12] = 0;
-            draw_text(44, 80 + i * 28, 2, WHITE, key);
-            draw_text(230, 80 + i * 28, 2, WHITE, ln + 13);
+            draw_text(44, y, 2, WHITE, key);
+            draw_text(230, y, 2, WHITE, ln + 13);
         } else {
-            draw_text(44, 80 + i * 28, 2, WHITE, ln);
+            draw_text(44, y, 2, WHITE, ln);
         }
     }
     if (rules_page == 0) {
@@ -1012,23 +994,24 @@ static void draw_rules(void)
         draw_tile(MAKE_TILE(COL_BLUE, ANI_CRAB), 80, 334, 60, 52);
         draw_tile(MAKE_TILE(COL_BLUE, ANI_STAR), 140, 334, 60, 52);
         draw_tile(MAKE_TILE(COL_BLUE, ANI_FISH), 200, 334, 60, 52);
-        draw_text(276, 350, 2, WHITE, "= 3 PONTOS PARA CORES");
+        draw_text(276, 350, 2, WHITE, tr(S_RULES_EXAMPLE));
     }
     draw_sprite_h(SPR_STARFISH, 548, 330, 80, WHITE);
-    draw_help("< > PAGINA   x PROXIMA   o SAIR", WHITE);
+    draw_help(tr(S_HELP_RULES), WHITE);
 }
 
 static void draw_pause(void)
 {
-    const char *items[PAUSE_ITEMS] = {
-        "CONTINUAR", "COMO JOGAR",
-        audio_music_enabled() ? "MUSICA: SIM" : "MUSICA: NAO",
-        audio_sfx_enabled() ? "EFEITOS: SIM" : "EFEITOS: NAO",
-        "SAIR PARA O MENU" };
+    const char *items[PAUSE_ITEMS];
+    items[0] = tr(S_CONTINUE);
+    items[1] = tr(S_MENU_RULES);
+    items[2] = tr(audio_music_enabled() ? S_MUSIC_ON : S_MUSIC_OFF);
+    items[3] = tr(audio_sfx_enabled() ? S_SFX_ON : S_SFX_OFF);
+    items[4] = tr(S_QUIT);
     int i;
     dim_screen(150);
     big_panel(140, 64, 360, 330);
-    draw_text_center(SCREEN_W / 2, 84, 5, WHITE, "PAUSA");
+    draw_text_center(SCREEN_W / 2, 84, 5, WHITE, tr(S_PAUSE));
     draw_sprite_h(SPR_TURTLE, 440, 24, 84, WHITE);
     for (i = 0; i < PAUSE_ITEMS; i++)
         draw_menu_item(SCREEN_W / 2, 158 + i * 44, 3, items[i], i == pause_sel);
@@ -1068,22 +1051,71 @@ static void draw_result(void)
     draw_result_card(0, 58);
     draw_result_card(1, 222);
     if (num_humans == 1)
-        snprintf(buf, sizeof(buf), w == 0 ? "VOCE VENCEU!" : "A CPU VENCEU!");
+        snprintf(buf, sizeof(buf), "%s", tr(w == 0 ? S_YOU_WIN : S_CPU_WINS));
     else
-        snprintf(buf, sizeof(buf), "%s VENCEU!", player_name(w));
+        snprintf(buf, sizeof(buf), tr(S_WINS_FMT), player_name(w));
     tw = (float)text_width(buf, 4);
     draw_text(BOARD_X - 8, 12, 4, WHITE, buf);
     draw_sprite_h(w == 0 ? SPR_CRAB : SPR_PUFFER, BOARD_X + tw + 4, 4 - (float)pulse(40, 0, 8), 48, WHITE);
     if (s0 == s1)
-        draw_text_shadow(PANEL_X - 30, 44, 1, WHITE, "EMPATE: VENCE QUEM JOGOU EM SEGUNDO");
-    snprintf(buf, sizeof(buf), "CARDUMES DE %s", role_name(result_view));
+        draw_text_shadow(PANEL_X - 30, 44, 1, WHITE, tr(S_TIE_NOTE));
+    snprintf(buf, sizeof(buf), tr(S_SCHOOLS_OF_FMT), role_name(result_view));
     draw_text(PANEL_X + 4, 386, 2, WHITE, buf);
-    draw_help("x REVANCHE (PAPEIS TROCADOS)   o MENU", WHITE);
+    draw_help(tr(S_HELP_RESULT), WHITE);
+}
+
+/* bandeiras desenhadas com primitivas: Brasil, Reino Unido, Espanha */
+static void draw_flag(int lang, float x, float y, float w, float h)
+{
+    draw_round_rect(x - 3, y - 3, w + 6, h + 6, 5, RGBA(10, 20, 40, 230));
+    if (lang == LANG_PT) {
+        float cx = x + w / 2, cy = y + h / 2;
+        gfx_rect(x, y, w, h, RGB(0, 150, 60));
+        gfx_tri(cx, y + h * 0.1f, x + w * 0.08f, cy, cx, y + h * 0.9f, RGB(255, 210, 0));
+        gfx_tri(cx, y + h * 0.1f, x + w * 0.92f, cy, cx, y + h * 0.9f, RGB(255, 210, 0));
+        draw_circle(cx, cy, h * 0.24f, RGB(20, 40, 140));
+        draw_line(cx - h * 0.23f, cy - h * 0.03f, cx + h * 0.23f, cy + h * 0.05f, 2, WHITE);
+    } else if (lang == LANG_EN) {
+        float cx = x + w / 2, cy = y + h / 2;
+        gfx_rect(x, y, w, h, RGB(20, 40, 120));
+        draw_line(x, y, x + w, y + h, h * 0.2f, WHITE);
+        draw_line(x, y + h, x + w, y, h * 0.2f, WHITE);
+        draw_line(x, y, x + w, y + h, h * 0.07f, RGB(200, 20, 40));
+        draw_line(x, y + h, x + w, y, h * 0.07f, RGB(200, 20, 40));
+        gfx_rect(cx - h * 0.17f, y, h * 0.34f, h, WHITE);
+        gfx_rect(x, cy - h * 0.17f, w, h * 0.34f, WHITE);
+        gfx_rect(cx - h * 0.1f, y, h * 0.2f, h, RGB(200, 20, 40));
+        gfx_rect(x, cy - h * 0.1f, w, h * 0.2f, RGB(200, 20, 40));
+    } else {
+        gfx_rect(x, y, w, h, RGB(200, 20, 30));
+        gfx_rect(x, y + h * 0.25f, w, h * 0.5f, RGB(255, 200, 0));
+    }
+}
+
+static void draw_lang(void)
+{
+    int i;
+    dim_screen(120);
+    big_panel(120, 70, 400, 310);
+    draw_text_center(SCREEN_W / 2, 92, 3, WHITE, tr(S_LANG_PROMPT));
+    for (i = 0; i < NUM_LANGS; i++) {
+        float y = 150 + i * 72;
+        int sel = i == lang_sel;
+        if (sel) {
+            draw_round_rect(150, y - 8, 340, 60, 14, RGBA(10, 20, 50, 230));
+            draw_round_rect(152, y - 6, 336, 56, 12, RGBA(255, 210, 50, pulse(60, 170, 250)));
+        }
+        draw_flag(i, 172, y + 4, 60, 36);
+        draw_text(258, y + 10, 3, sel ? WHITE : RGB(170, 180, 200), lang_name(i));
+    }
+    draw_sprite_h(SPR_CRAB, 60, 330, 64, WHITE);
+    draw_sprite_h(SPR_PUFFER, 500, 316, 76, WHITE);
+    draw_help(tr(S_HELP_CONFIRM), WHITE);
 }
 
 void ui_draw(void)
 {
-    draw_background(state == ST_TITLE);
+    draw_background(state == ST_TITLE || state == ST_LANG);
     switch (state) {
     case ST_TITLE:  draw_title(); break;
     case ST_SETUP:  draw_setup(); break;
@@ -1091,5 +1123,6 @@ void ui_draw(void)
     case ST_PLAY:   draw_play(); break;
     case ST_PAUSE:  draw_play(); draw_pause(); break;
     case ST_RESULT: draw_result(); break;
+    case ST_LANG:   draw_lang(); break;
     }
 }

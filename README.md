@@ -65,6 +65,12 @@ música; no menu de pausa dá para desligar música e efeitos separadamente.
 No PS2, `src/audio.c` mistura música e até 8 efeitos (com pan estéreo pela
 posição no recife) a 48 kHz e uma thread envia o áudio ao `audsrv.irx`.
 
+## Idiomas
+
+Ao ligar, o jogo pergunta o idioma: **Português** (padrão), **English** ou
+**Español**. Dá para trocar depois no menu principal (IDIOMA / LANGUAGE).
+Os textos ficam em `src/lang.c`.
+
 ## Modos
 
 - **1 Jogador** contra a CPU – escolha seu papel (cores/animais), dificuldade
@@ -74,7 +80,9 @@ posição no recife) a 48 kHz e uma thread envia o áudio ao `audsrv.irx`.
 
 ## Rodando
 
-Arquivos prontos em [`dist/`](dist):
+Baixe a última versão em **Releases** do repositório (`AquafreshPS2.elf` e
+`AquafreshPS2.iso`, compilados pelo GitHub Actions a cada tag `v*`) ou use os
+arquivos em [`dist/`](dist):
 
 - `AquafreshPS2.iso` – imagem de disco (PCSX2 ou Open PS2 Loader).
 - `AQUAFRESH.ELF` – executável (PCSX2: *Sistema → Iniciar ELF*; PS2 real:
