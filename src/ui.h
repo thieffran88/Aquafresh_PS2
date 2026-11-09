@@ -20,8 +20,10 @@ enum {
 };
 
 void ui_init(unsigned int seed);
-/* Chamado 1x por quadro (60 Hz). held = botoes pressionados agora. */
-void ui_update(unsigned int held);
+/* Chamado 1x por quadro (60 Hz) com os botoes pressionados agora em cada
+ * controle. O controle 1 comanda o jogador 1 e os menus; o controle 2 so
+ * comanda o jogador 2 (modo de 2 jogadores). */
+void ui_update(unsigned int held_pad1, unsigned int held_pad2);
 void ui_draw(void);
 
 /* Consultas usadas pelo programa de teste no PC (capturas de tela). */

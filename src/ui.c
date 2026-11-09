@@ -33,8 +33,12 @@ enum { PH_MOVE, PH_MOVE_DEST, PH_PICK, PH_DROP, PH_CPU, PH_END };
 static int state = ST_LANG, rules_return = ST_TITLE;
 static int lang_sel = LANG_PT;
 static unsigned int frame_no, seed_base;
-static unsigned int prev_held, pressed;
-static int repeat_btn, repeat_timer;
+static unsigned int pressed;
+/* estado de cada controle (porta 1 e porta 2) */
+static unsigned int prev_held[2];
+static int repeat_btn[2], repeat_timer[2];
+static int pause_pad;               /* controle que abriu a pausa */
+static int active_pad(void);
 
 static int menu_sel;
 static int num_humans = 1;          /* 1 = contra CPU, 2 = dois jogadores */
@@ -249,6 +253,7 @@ static void update_play(void)
         msg_timer--;
 
     if (pressed & BTN_START && phase != PH_END) {
+        pause_pad = active_pad();   /* antes de mudar o estado */
         state = ST_PAUSE;
         pause_sel = 0;
         return;
@@ -499,22 +504,44 @@ int ui_phase(void) { return phase; }
 const Game *ui_game(void) { return &game; }
 void ui_cursor(int *r, int *c) { *r = cur_r; *c = cur_c; }
 
-void ui_update(unsigned int held)
+/* Qual controle manda agora: o controle 1 e sempre o jogador 1 (e os
+ * menus); o controle 2 so joga a vez do jogador 2 no modo de 2 jogadores. */
+static int active_pad(void)
+{
+    if ((state == ST_PAUSE || (state == ST_RULES && rules_return == ST_PAUSE)))
+        return pause_pad;
+    if (state == ST_PLAY && num_humans == 2 && game.turn == 1 && phase != PH_END)
+        return 1;
+    return 0;
+}
+
+/* Botoes recem-apertados de um controle, com repeticao do direcional. */
+static unsigned int pad_pressed(int pad, unsigned int held)
 {
     const unsigned int dirs = BTN_UP | BTN_DOWN | BTN_LEFT | BTN_RIGHT;
-    frame_no++;
-    pressed = held & ~prev_held;
-    /* repeticao automatica do direcional */
-    if (held & dirs & repeat_btn) {
-        if (--repeat_timer <= 0) {
-            pressed |= held & dirs & repeat_btn;
-            repeat_timer = 6;
+    unsigned int p = held & ~prev_held[pad];
+    if (held & dirs & (unsigned)repeat_btn[pad]) {
+        if (--repeat_timer[pad] <= 0) {
+            p |= held & dirs & (unsigned)repeat_btn[pad];
+            repeat_timer[pad] = 6;
         }
     } else {
-        repeat_btn = (int)(pressed & dirs);
-        repeat_timer = 18;
+        repeat_btn[pad] = (int)(p & dirs);
+        repeat_timer[pad] = 18;
     }
-    prev_held = held;
+    prev_held[pad] = held;
+    return p;
+}
+
+void ui_update(unsigned int held1, unsigned int held2)
+{
+    unsigned int p1, p2;
+    frame_no++;
+    /* os dois controles sao lidos sempre (para nao "vazar" um aperto
+     * antigo quando a vez muda), mas so o controle da vez e obedecido */
+    p1 = pad_pressed(0, held1);
+    p2 = pad_pressed(1, held2);
+    pressed = active_pad() == 0 ? p1 : p2;
 
     {
         /* foto do estado para descobrir que som tocar */
@@ -809,15 +836,22 @@ static void draw_help(const char *text, Color c)
     draw_text_center(SCREEN_W / 2, HELP_Y, 2, c, text);
 }
 
-static void draw_banner(const char *text, int alpha)
+/* aviso de vez; 'sub' (opcional) aparece embaixo, ex.: qual controle usar */
+static void draw_banner(const char *text, const char *sub, int alpha)
 {
-    int w = text_width(text, 4) + 100;
+    int sc = text_width(text, 4) + 100 > 380 ? 3 : 4;     /* textos longos menores */
+    int w = text_width(text, sc) + 100;
+    float h = sub ? 86.0f : 64.0f;
     float x = BOARD_X + BOARD_N * CELL_W / 2 - w / 2;
-    float y = BOARD_Y + BOARD_N * CELL_H / 2 - 32;
-    draw_round_rect(x, y, (float)w, 64, 18, RGBA(10, 20, 50, alpha * 230 / 255));
-    draw_round_rect(x + 3, y + 3, (float)w - 6, 58, 16, RGBA(30, 110, 190, alpha * 230 / 255));
+    float y = BOARD_Y + BOARD_N * CELL_H / 2 - h / 2;
+    if (x < 24)
+        x = 24;
+    draw_round_rect(x, y, (float)w, h, 18, RGBA(10, 20, 50, alpha * 230 / 255));
+    draw_round_rect(x + 3, y + 3, (float)w - 6, h - 6, 16, RGBA(30, 110, 190, alpha * 230 / 255));
     draw_sprite_h(SPR_STARFISH, x - 20, y - 14, 76, RGBA(255, 255, 255, alpha));
-    draw_text(x + 76, y + 15, 4, RGBA(255, 255, 255, alpha), text);
+    draw_text(x + 76, y + (sc == 4 ? 15 : 19), sc, RGBA(255, 255, 255, alpha), text);
+    if (sub)
+        draw_text(x + 76, y + 56, 2, RGBA(255, 225, 90, alpha), sub);
 }
 
 static void draw_phase_info(void)
@@ -868,8 +902,10 @@ static void draw_play(void)
 
     if (state == ST_PLAY && banner_timer > 0 && !is_cpu[game.turn]) {
         int a = banner_timer > 20 ? 255 : banner_timer * 255 / 20;
+        char sub[32];
         snprintf(buf, sizeof(buf), tr(num_humans == 2 ? S_TURN_OF_FMT : S_YOUR_TURN), player_name(game.turn));
-        draw_banner(buf, a);
+        snprintf(sub, sizeof(sub), tr(S_PAD_FMT), game.turn + 1);
+        draw_banner(buf, num_humans == 2 ? sub : NULL, a);
     }
 }
 
@@ -954,6 +990,14 @@ static void draw_setup(void)
     draw_text(400, y, 2, WHITE, player_name(1));
     draw_text(400, y + 20, 2, RGB(150, 220, 255), role_name(opt_role ^ 1));
     draw_mini_role(opt_role ^ 1, 400, y + 44, 14);
+    if (num_humans == 2) {
+        /* cada jogador usa o seu controle */
+        char pad[32];
+        snprintf(pad, sizeof(pad), tr(S_PAD_FMT), 1);
+        draw_text(160, y + 64, 2, RGB(255, 225, 90), pad);
+        snprintf(pad, sizeof(pad), tr(S_PAD_FMT), 2);
+        draw_text(400, y + 64, 2, RGB(255, 225, 90), pad);
+    }
     draw_help(tr(S_HELP_SETUP), WHITE);
 }
 

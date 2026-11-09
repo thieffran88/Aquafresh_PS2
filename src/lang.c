@@ -30,6 +30,7 @@ static const char *const strings[NUM_LANGS][NUM_STRINGS] = {
         "VOCE VENCEU!", "A CPU VENCEU!", "%s VENCEU!", "EMPATE: VENCE QUEM JOGOU EM SEGUNDO",
         "CARDUMES DE %s",
         "ESCOLHA O IDIOMA",
+        "CONTROLE %d",
     },
     /* --------------------------------------------------------- ENGLISH */
     {
@@ -55,6 +56,7 @@ static const char *const strings[NUM_LANGS][NUM_STRINGS] = {
         "YOU WIN!", "THE CPU WINS!", "%s WINS!", "TIE: THE PLAYER WHO WENT SECOND WINS",
         "SCHOOLS: %s",
         "CHOOSE YOUR LANGUAGE",
+        "CONTROLLER %d",
     },
     /* --------------------------------------------------------- ESPANOL */
     {
@@ -80,6 +82,7 @@ static const char *const strings[NUM_LANGS][NUM_STRINGS] = {
         "GANASTE!", "GANA LA CPU!", "GANA %s!", "EMPATE: GANA QUIEN JUGO SEGUNDO",
         "BANCOS DE %s",
         "ELIGE TU IDIOMA",
+        "MANDO %d",
     },
 };
 

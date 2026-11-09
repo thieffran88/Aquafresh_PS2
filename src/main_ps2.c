@@ -240,8 +240,8 @@ int main(int argc, char *argv[])
     ui_init((unsigned int)cpu_ticks());
 
     for (;;) {
-        /* os dois controles funcionam (2 jogadores podem usar o seu) */
-        ui_update(pad_read_port(0) | pad_read_port(1));
+        /* controle 1 = jogador 1 e menus; controle 2 = jogador 2 */
+        ui_update(pad_read_port(0), pad_read_port(1));
         gsKit_clear(gs, GS_SETREG_RGBAQ(6, 30, 80, 0x80, 0x00));
         ui_draw();
         gsKit_queue_exec(gs);

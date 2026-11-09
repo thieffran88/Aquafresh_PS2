@@ -44,7 +44,10 @@ Na **revanche** os papéis são trocados.
 | L1 / R1 | Trocar a criatura escolhida do viveiro |
 | START | Pausa |
 
-No modo 2 jogadores, os dois controles funcionam (ou passem o mesmo controle).
+**Controles por jogador:** o controle 1 comanda o jogador 1 e os menus; o
+controle 2 comanda só o jogador 2 (modo 2 jogadores). Na vez de um jogador, o
+controle do outro é ignorado; a pausa só é desfeita pelo controle que pausou.
+Contra a CPU, use o controle 1.
 Na tela final, o direcional alterna o destaque entre os cardumes de cada jogador.
 
 ## Som

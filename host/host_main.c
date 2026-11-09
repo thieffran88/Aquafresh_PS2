@@ -177,10 +177,10 @@ static void shot(const char *name)
 static short *audio_buf;
 static long audio_frames, audio_cap;
 
-static void step(unsigned held, int frames)
+static void step_pads(unsigned held1, unsigned held2, int frames)
 {
     while (frames-- > 0) {
-        ui_update(held);
+        ui_update(held1, held2);
         if (audio_frames + 800 > audio_cap) {
             audio_cap = audio_cap ? audio_cap * 2 : 48000 * 60;
             audio_buf = realloc(audio_buf, (size_t)audio_cap * 2 * sizeof(short));
@@ -208,6 +208,17 @@ static void write_wav(const char *path)
     }
     fclose(f);
     printf("audio: %s (%.1f s)\n", path, audio_frames / (double)AUDIO_RATE);
+}
+
+static void step(unsigned held, int frames)
+{
+    step_pads(held, 0, frames);
+}
+
+static void press2(unsigned b)    /* aperta no controle 2 */
+{
+    step_pads(0, b, 1);
+    step_pads(0, 0, 1);
 }
 
 static void press(unsigned b)
@@ -355,6 +366,41 @@ int main(int argc, char **argv)
             press(BTN_CROSS);                    /* sair para o menu */
         }
     }
+    /* 2 jogadores: cada controle so comanda o seu jogador */
+    {
+        const Game *g = ui_game();
+        int ok = 1;
+        press(BTN_DOWN);                 /* 2 JOGADORES */
+        press(BTN_CROSS);
+        shot("20_2j_config");
+        press(BTN_START);                /* comeca a partida */
+        step(0, 5);
+        ok &= ui_state() == 3 && g->turn == 0 && ui_phase() == 2;
+        press2(BTN_CROSS);               /* controle 2 na vez do jogador 1: ignorado */
+        ok &= ui_phase() == 2;
+        press(BTN_CROSS);                /* controle 1 escolhe a criatura */
+        ok &= ui_phase() == 3;
+        press(BTN_CROSS);                /* e coloca */
+        ok &= g->turn == 1 && g->on_board == 1;
+        step(0, 15);
+        shot("21_2j_vez_jogador2");
+        press(BTN_CROSS);                /* controle 1 na vez do jogador 2: ignorado */
+        ok &= ui_phase() == 0;
+        press(BTN_TRIANGLE);
+        ok &= ui_phase() == 0;
+        press2(BTN_TRIANGLE);            /* controle 2 pula o movimento */
+        ok &= ui_phase() == 2;
+                press2(BTN_START);               /* controle 2 pausa... */
+        ok &= ui_state() == 4;
+        press(BTN_START);                /* ...e so ele despausa */
+        ok &= ui_state() == 4;
+        press2(BTN_START);
+        ok &= ui_state() == 3;
+        printf("teste dos controles: %s\n", ok ? "OK" : "FALHOU");
+        if (!ok)
+            return 1;
+    }
+
     if (argc > 2)
         write_wav(argv[2]);
     return 0;
