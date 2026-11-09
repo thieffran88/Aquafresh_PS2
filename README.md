@@ -39,12 +39,31 @@ Na **revanche** os papéis são trocados.
 | Direcional / analógico esquerdo | Mover cursor |
 | ✕ | Confirmar |
 | ○ | Voltar / cancelar (desfaz o movimento antes de colocar) |
+| SELECT | Liga/desliga a música |
 | △ | Pular a fase de movimento |
 | L1 / R1 | Trocar a criatura escolhida do viveiro |
 | START | Pausa |
 
 No modo 2 jogadores, os dois controles funcionam (ou passem o mesmo controle).
 Na tela final, o direcional alterna o destaque entre os cardumes de cada jogador.
+
+## Som
+
+Trilha e efeitos originais com tema de recife de corais, sintetizados por
+`tools/gen_audio.py` (marimba, steel drum, pads, baixo, chocalho, congas,
+bolhas e ondas — nenhum sample externo):
+
+- **Festa no Recife** (menus) – calipso em Dó maior, 112 BPM.
+- **Recife Calmo** (partida) – Fá maior, 92 BPM, com ondas ao fundo.
+- Efeitos: cursor (bolha), confirmar/voltar (marimba), deslizar criatura
+  (água), colocar (plop), cardume formado (arpejo de steel drum), erro, sua vez
+  (sininhos de concha), início de partida, vitória e derrota.
+
+Ouça em [`audio_preview/`](audio_preview). No jogo: **SELECT** liga/desliga a
+música; no menu de pausa dá para desligar música e efeitos separadamente.
+
+No PS2, `src/audio.c` mistura música e até 8 efeitos (com pan estéreo pela
+posição no recife) a 48 kHz e uma thread envia o áudio ao `audsrv.irx`.
 
 ## Modos
 
@@ -69,7 +88,7 @@ O código é C puro com [PS2SDK](https://github.com/ps2dev/ps2sdk) + gsKit.
 
 A arte fica em `assets/src/` (`sprites.png` com as 36 peças, personagens e
 decorações; `font.png` com a fonte; `title.png` com a tela de título).
-`make assets` (Python + Pillow, numpy, scipy) recorta tudo, remove o fundo
+`make assets` (Python + Pillow, numpy, scipy) gera também os sons, recorta tudo, remove o fundo
 branco e gera atlas de textura de 8 bits com paleta (T8 + CLUT) em
 `assets/bin/`, que são embutidos no executável. Com 8 bits por pixel, todas as
 texturas da partida (~0,9 MB) cabem juntas na VRAM de 4 MB do PS2.
@@ -98,6 +117,7 @@ ELF e a ISO como artefatos.
 | `src/draw.c` | Formas, texto e desenho das criaturas |
 | `src/assets.c`, `src/assets_bin.S` | Tabela de sprites e texturas embutidas (gerados por `tools/gen_assets.py`) |
 | `src/font.c` | Fonte bitmap 5x7 para textos bem pequenos (gerada por `tools/gen_font.py`) |
-| `src/main_ps2.c` | Vídeo (gsKit) e controle (libpad) do PS2 |
+| `src/audio.c` | Mixer de música e efeitos (sons gerados por `tools/gen_audio.py`) |
+| `src/main_ps2.c` | Vídeo (gsKit), controle (libpad) e áudio (audsrv) do PS2 |
 | `host/host_main.c` | Rasterizador em software para testar/capturar telas no PC |
 | `tests/test_game.c` | Testes das regras |

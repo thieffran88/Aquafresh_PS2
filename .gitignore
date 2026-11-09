@@ -5,3 +5,4 @@
 /build/
 screenshots/*.ppm
 assets/bin/*_preview.png
+assets/preview/

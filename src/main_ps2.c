@@ -1,6 +1,7 @@
 /*
  * Aquafresh PS2 - ponto de entrada no PlayStation 2.
  * Video: gsKit (640x448 NTSC entrelacado, 60 Hz). Controle: libpad (rom0:PADMAN).
+ * Audio: mixer proprio (src/audio.c) -> audsrv, 48 kHz estereo, numa thread.
  */
 #include <kernel.h>
 #include <sifrpc.h>
@@ -12,10 +13,13 @@
 #include <gsKit.h>
 #include <dmaKit.h>
 #include <libpad.h>
+#include <audsrv.h>
+#include <sbv_patches.h>
 
 #include "gfx.h"
 #include "assets.h"
 #include "ui.h"
+#include "audio.h"
 
 static GSGLOBAL *gs;
 static GSTEXTURE tex[NUM_ATLASES];
@@ -158,6 +162,67 @@ static unsigned int pad_read_port(int port)
 
 /* ------------------------------------------------------------------- main */
 
+/* ------------------------------------------------------------------ audio */
+
+extern unsigned char irx_libsd[], irx_libsd_end[];
+extern unsigned char irx_audsrv[], irx_audsrv_end[];
+
+#define AUDIO_CHUNK 1024                 /* quadros por envio (~21 ms) */
+static short audio_out[AUDIO_CHUNK * 2] __attribute__((aligned(64)));
+static unsigned char audio_stack[16 * 1024] __attribute__((aligned(16)));
+extern void *_gp;
+
+static void audio_thread(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        audio_mix(audio_out, AUDIO_CHUNK);
+        /* bloqueia (dormindo no RPC) ate caber no buffer do IOP */
+        audsrv_wait_audio(sizeof(audio_out));
+        audsrv_play_audio((const char *)audio_out, sizeof(audio_out));
+    }
+}
+
+static void sound_init(void)
+{
+    struct audsrv_fmt_t fmt;
+    ee_thread_t th;
+    int id, ret;
+
+    audio_init();
+    sbv_patch_enable_lmb();     /* permite carregar modulos a partir da RAM do EE */
+    SifExecModuleBuffer(irx_libsd, irx_libsd_end - irx_libsd, 0, NULL, &ret);
+    if (SifExecModuleBuffer(irx_audsrv, irx_audsrv_end - irx_audsrv, 0, NULL, &ret) < 0 || ret < 0) {
+        printf("audsrv.irx nao carregou: jogo segue sem som\n");
+        return;
+    }
+    if (audsrv_init() != 0) {
+        printf("audsrv_init falhou: %s\n", audsrv_get_error_string());
+        return;
+    }
+    fmt.freq = AUDIO_RATE;
+    fmt.bits = 16;
+    fmt.channels = 2;
+    if (audsrv_set_format(&fmt) != 0) {
+        printf("audsrv_set_format falhou\n");
+        return;
+    }
+    audsrv_set_volume(MAX_VOLUME);
+
+    /* thread de audio com prioridade maior que a do jogo: o som nao
+     * engasga quando a IA da CPU pensa por alguns quadros */
+    ChangeThreadPriority(GetThreadId(), 64);
+    memset(&th, 0, sizeof(th));
+    th.func = (void *)audio_thread;
+    th.stack = audio_stack;
+    th.stack_size = sizeof(audio_stack);
+    th.gp_reg = &_gp;
+    th.initial_priority = 40;
+    id = CreateThread(&th);
+    if (id >= 0)
+        StartThread(id, NULL);
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc;
@@ -170,6 +235,7 @@ int main(int argc, char *argv[])
     SifInitRpc(0);
 
     pad_init();
+    sound_init();
     video_init();
     ui_init((unsigned int)cpu_ticks());
 

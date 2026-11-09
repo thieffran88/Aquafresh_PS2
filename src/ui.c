@@ -6,6 +6,7 @@
 #include "ui.h"
 #include "game.h"
 #include "draw.h"
+#include "audio.h"
 
 enum { ST_TITLE, ST_SETUP, ST_RULES, ST_PLAY, ST_PAUSE, ST_RESULT };
 enum { PH_MOVE, PH_MOVE_DEST, PH_PICK, PH_DROP, PH_CPU, PH_END };
@@ -92,8 +93,27 @@ static void pool_pos(int i, float *x, float *y)
     *y = (float)(POOL_Y + (i / 3) * (POOL_H + POOL_GAP));
 }
 
+/* ------------------------------------------------------------------- som */
+
+static int sfx_this_frame;
+static int music_wanted = MUSIC_NONE;
+
+static void sfx(int id, int pan)
+{
+    snd_play_pan(id, pan);
+    sfx_this_frame = 1;
+}
+
+/* pan estereo pela posicao de uma casa do recife */
+static int cell_pan(int cell)
+{
+    float x = (float)(BOARD_X + (cell % BOARD_N) * CELL_W + CELL_W / 2);
+    return (int)((x - SCREEN_W / 2) * 100 / (SCREEN_W / 2));
+}
+
 static void set_msg(const char *m)
 {
+    sfx(SFX_ERROR, 0);
     strncpy(msg, m, sizeof(msg) - 1);
     msg[sizeof(msg) - 1] = 0;
     msg_timer = 150;
@@ -133,6 +153,7 @@ static void new_game(void)
     pool_sel = 0;
     cur_r = cur_c = 2;
     state = ST_PLAY;
+    sfx(SFX_START, 0);
     start_turn();
 }
 
@@ -156,6 +177,7 @@ static void start_turn(void)
     } else {
         phase = game_first_turn(&game) ? PH_PICK : PH_MOVE;
         banner_timer = num_humans == 2 ? 80 : 50;
+        sfx(SFX_TURN, 0);
     }
 }
 
@@ -165,13 +187,20 @@ static void enter_results(void)
     game_score_player(&game, 1, &result_detail[1]);
     result_view = game.role[0];
     state = ST_RESULT;
+    /* contra a CPU, perder toca a vinheta triste */
+    sfx(num_humans == 1 && game_winner(&game) != 0 ? SFX_LOSE : SFX_WIN, 0);
 }
 
 static void finish_place(int pool_idx, int cell)
 {
     float px, py;
+    int p = game.turn;
+    int before = game_score_player(&game, p, 0);
     pool_pos(pool_idx, &px, &py);
     if (game_place(&game, pool_idx, cell) == 0) {
+        sfx(SFX_PLACE, cell_pan(cell));
+        if (game_score_player(&game, p, 0) > before)
+            sfx(SFX_SCHOOL, cell_pan(cell));    /* formou ou aumentou um cardume */
         start_anim(cell, px, py);
         mark_cell = cell;
         if (!moved_this_turn)
@@ -190,6 +219,7 @@ static void do_move(int from, int to)
     undo_marks[2] = mark_cell;
     game_do_move(&game, from, to);
     start_anim(to, fx, fy);
+    sfx(SFX_MOVE, cell_pan(to));
     mark_from = from;
     mark_to = to;
     mark_cell = -1;
@@ -399,10 +429,20 @@ static void update_rules(void)
         state = rules_return;
 }
 
+#define PAUSE_ITEMS 5
+
 static void update_pause(void)
 {
-    if (pressed & BTN_UP)   pause_sel = (pause_sel + 2) % 3;
-    if (pressed & BTN_DOWN) pause_sel = (pause_sel + 1) % 3;
+    if (pressed & BTN_UP)   pause_sel = (pause_sel + PAUSE_ITEMS - 1) % PAUSE_ITEMS;
+    if (pressed & BTN_DOWN) pause_sel = (pause_sel + 1) % PAUSE_ITEMS;
+    if ((pressed & (BTN_LEFT | BTN_RIGHT | BTN_CROSS)) && pause_sel >= 2 && pause_sel <= 3) {
+        if (pause_sel == 2)
+            audio_set_music_enabled(!audio_music_enabled());
+        else
+            audio_set_sfx_enabled(!audio_sfx_enabled());
+        sfx(SFX_SELECT, 0);
+        return;
+    }
     if (pressed & (BTN_START | BTN_CIRCLE)) {
         state = ST_PLAY;
         return;
@@ -414,7 +454,7 @@ static void update_pause(void)
             rules_return = ST_PAUSE;
             state = ST_RULES;
         }
-        if (pause_sel == 2) state = ST_TITLE;
+        if (pause_sel == 4) state = ST_TITLE;
     }
 }
 
@@ -459,13 +499,54 @@ void ui_update(unsigned int held)
     }
     prev_held = held;
 
-    switch (state) {
-    case ST_TITLE:  update_title(); break;
-    case ST_SETUP:  update_setup(); break;
-    case ST_RULES:  update_rules(); break;
-    case ST_PLAY:   update_play(); break;
-    case ST_PAUSE:  update_pause(); break;
-    case ST_RESULT: update_result(); break;
+    {
+        /* foto do estado para descobrir que som tocar */
+        int before[12], after_[12], moved_ui = 0, changed, i;
+        int st0 = state, ph0 = phase;
+        int *watch[12] = { &cur_r, &cur_c, &pool_sel, &menu_sel, &setup_sel, &pause_sel,
+                           &rules_page, &opt_role, &opt_level, &opt_first, &result_view, &state };
+        for (i = 0; i < 12; i++)
+            before[i] = *watch[i];
+        sfx_this_frame = 0;
+
+        if (pressed & BTN_SELECT) {          /* SELECT liga/desliga a musica */
+            audio_set_music_enabled(!audio_music_enabled());
+            pressed &= ~BTN_SELECT;
+        }
+
+        switch (state) {
+        case ST_TITLE:  update_title(); break;
+        case ST_SETUP:  update_setup(); break;
+        case ST_RULES:  update_rules(); break;
+        case ST_PLAY:   update_play(); break;
+        case ST_PAUSE:  update_pause(); break;
+        case ST_RESULT: update_result(); break;
+        }
+
+        for (i = 0; i < 11; i++) {
+            after_[i] = *watch[i];
+            moved_ui |= after_[i] != before[i];
+        }
+        changed = state != st0 || phase != ph0;
+        if (!sfx_this_frame) {
+            if (changed && (pressed & BTN_CIRCLE))
+                sfx(SFX_BACK, 0);
+            else if (changed && (pressed & (BTN_CROSS | BTN_TRIANGLE | BTN_START)))
+                sfx(SFX_SELECT, 0);
+            else if (moved_ui)
+                sfx(SFX_CURSOR, 0);
+        }
+    }
+
+    /* musica de cada tela */
+    {
+        int want = MUS_GAME;
+        if (state == ST_TITLE || state == ST_SETUP || (state == ST_RULES && rules_return == ST_TITLE))
+            want = MUS_MENU;
+        if (want != music_wanted) {
+            music_wanted = want;
+            music_play(want);
+        }
     }
 }
 
@@ -900,7 +981,7 @@ static void draw_rules(void)
           "^            PULA O MOVIMENTO",
           "L1 R1        TROCA A CRIATURA",
           "START        PAUSA",
-          "",
+          "SELECT       LIGA/DESLIGA A MUSICA",
           "NA TELA FINAL O DIRECIONAL MOSTRA",
           "OS CARDUMES DE CADA JOGADOR." },
     };
@@ -939,14 +1020,18 @@ static void draw_rules(void)
 
 static void draw_pause(void)
 {
-    static const char *items[3] = { "CONTINUAR", "COMO JOGAR", "SAIR PARA O MENU" };
+    const char *items[PAUSE_ITEMS] = {
+        "CONTINUAR", "COMO JOGAR",
+        audio_music_enabled() ? "MUSICA: SIM" : "MUSICA: NAO",
+        audio_sfx_enabled() ? "EFEITOS: SIM" : "EFEITOS: NAO",
+        "SAIR PARA O MENU" };
     int i;
     dim_screen(150);
-    big_panel(150, 100, 340, 240);
-    draw_text_center(SCREEN_W / 2, 122, 5, WHITE, "PAUSA");
-    draw_sprite_h(SPR_TURTLE, 440, 60, 84, WHITE);
-    for (i = 0; i < 3; i++)
-        draw_menu_item(SCREEN_W / 2, 200 + i * 42, 3, items[i], i == pause_sel);
+    big_panel(140, 64, 360, 330);
+    draw_text_center(SCREEN_W / 2, 84, 5, WHITE, "PAUSA");
+    draw_sprite_h(SPR_TURTLE, 440, 24, 84, WHITE);
+    for (i = 0; i < PAUSE_ITEMS; i++)
+        draw_menu_item(SCREEN_W / 2, 158 + i * 44, 3, items[i], i == pause_sel);
 }
 
 static void draw_result_card(int p, float y)

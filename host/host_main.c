@@ -12,6 +12,7 @@
 #include "../src/ui.h"
 #include "../src/game.h"
 #include "../src/assets.h"
+#include "../src/audio.h"
 
 static unsigned char fb[SCREEN_H][SCREEN_W][3];
 static long prim_count;
@@ -172,10 +173,41 @@ static void shot(const char *name)
     printf("captura: %s (%ld primitivas)\n", path, prim_count);
 }
 
+/* audio: 800 quadros estereo por frame de video (48000 / 60) */
+static short *audio_buf;
+static long audio_frames, audio_cap;
+
 static void step(unsigned held, int frames)
 {
-    while (frames-- > 0)
+    while (frames-- > 0) {
         ui_update(held);
+        if (audio_frames + 800 > audio_cap) {
+            audio_cap = audio_cap ? audio_cap * 2 : 48000 * 60;
+            audio_buf = realloc(audio_buf, (size_t)audio_cap * 2 * sizeof(short));
+        }
+        audio_mix(audio_buf + audio_frames * 2, 800);
+        audio_frames += 800;
+    }
+}
+
+static void put32(FILE *f, unsigned v) { fputc(v & 255, f); fputc(v >> 8 & 255, f); fputc(v >> 16 & 255, f); fputc(v >> 24, f); }
+
+static void write_wav(const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    unsigned bytes = (unsigned)(audio_frames * 4);
+    long i;
+    if (!f) { perror(path); return; }
+    fwrite("RIFF", 1, 4, f); put32(f, 36 + bytes); fwrite("WAVEfmt ", 1, 8, f);
+    put32(f, 16); fputc(1, f); fputc(0, f); fputc(2, f); fputc(0, f);
+    put32(f, AUDIO_RATE); put32(f, AUDIO_RATE * 4); fputc(4, f); fputc(0, f); fputc(16, f); fputc(0, f);
+    fwrite("data", 1, 4, f); put32(f, bytes);
+    for (i = 0; i < audio_frames * 2; i++) {
+        unsigned short v = (unsigned short)audio_buf[i];
+        fputc(v & 255, f); fputc(v >> 8, f);
+    }
+    fclose(f);
+    printf("audio: %s (%.1f s)\n", path, audio_frames / (double)AUDIO_RATE);
 }
 
 static void press(unsigned b)
@@ -202,6 +234,7 @@ int main(int argc, char **argv)
     int took_move = 0, took_drop = 0, took_pause = 0, guard = 0;
     outdir = argc > 1 ? argv[1] : ".";
     ui_init(2024);
+    audio_init();
 
     step(0, 40);
     shot("01_titulo");
@@ -278,5 +311,8 @@ int main(int argc, char **argv)
     shot("10_resultado");
     press(BTN_RIGHT);
     shot("11_resultado_outro");
+    step(0, 240);
+    if (argc > 2)
+        write_wav(argv[2]);
     return 0;
 }
