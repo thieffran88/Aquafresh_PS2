@@ -1,10 +1,12 @@
 name: Release
 
-# Publica um release com o ELF (e a ISO) quando uma tag vX.Y.Z e enviada.
+# Publica um release com o ELF (e a ISO) sempre que o arquivo VERSION muda
+# (ou manualmente). A tag vX.Y.Z e criada pelo proprio release.
 on:
   push:
-    tags:
-      - "v*"
+    paths:
+      - VERSION
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -41,7 +43,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/AquafreshPS2.elf out/AquafreshPS2.iso \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Aquafresh PS2 $GITHUB_REF_NAME" \
-            --notes-file .github/release_notes.md
+          TAG="v$(tr -d ' \n' < VERSION)"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG ja existe: atualizando os arquivos"
+            gh release upload "$TAG" out/AquafreshPS2.elf out/AquafreshPS2.iso \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" out/AquafreshPS2.elf out/AquafreshPS2.iso \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Aquafresh PS2 $TAG" \
+              --notes-file .github/release_notes.md
+          fi

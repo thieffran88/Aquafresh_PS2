@@ -81,7 +81,7 @@ Os textos ficam em `src/lang.c`.
 ## Rodando
 
 Baixe a última versão em **Releases** do repositório (`AquafreshPS2.elf` e
-`AquafreshPS2.iso`, compilados pelo GitHub Actions a cada tag `v*`) ou use os
+`AquafreshPS2.iso`, compilados pelo GitHub Actions sempre que o arquivo `VERSION` muda) ou use os
 arquivos em [`dist/`](dist):
 
 - `AquafreshPS2.iso` – imagem de disco (PCSX2 ou Open PS2 Loader).
