@@ -1,0 +1,6 @@
+*.o
+/aquafresh.elf
+/aquafresh-packed.elf
+/aquafresh.iso
+/build/
+screenshots/*.ppm
