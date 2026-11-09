@@ -6,16 +6,16 @@
 #   make shots      -> capturas de tela geradas no PC (pasta screenshots/)
 
 EE_BIN = aquafresh.elf
-EE_OBJS = src/main_ps2.o src/ui.o src/draw.o src/game.o src/font.o
+EE_OBJS = src/main_ps2.o src/ui.o src/draw.o src/game.o src/font.o src/assets.o src/assets_bin.o
 EE_INCS = -I$(GSKIT)/include -Isrc
 EE_LDFLAGS = -L$(GSKIT)/lib
 EE_LIBS = -lgskit -ldmakit -lpad -lm
 EE_CFLAGS = -std=gnu99
 
 HOST_CC ?= gcc
-HOST_SRCS = src/ui.c src/draw.c src/game.c src/font.c
+HOST_SRCS = src/ui.c src/draw.c src/game.c src/font.c src/assets.c src/assets_bin.S
 
-.PHONY: all clean packed iso test shots docker font
+.PHONY: all clean packed iso test shots docker font assets
 
 all: $(EE_BIN)
 
@@ -31,6 +31,10 @@ aquafresh.iso: aquafresh-packed.elf iso/SYSTEM.CNF
 	cp iso/SYSTEM.CNF build/iso/SYSTEM.CNF
 	cp aquafresh-packed.elf build/iso/AQUA_000.01
 	xorriso -as mkisofs -quiet -V AQUAFRESH -iso-level 1 -o $@ build/iso
+
+# Regenera as texturas a partir de assets/src (precisa de Pillow, numpy, scipy).
+assets:
+	python3 tools/gen_assets.py
 
 # Regenera a fonte a partir da arte ASCII (src/font.c ja vem pronto).
 font:

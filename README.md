@@ -63,8 +63,16 @@ Arquivos prontos em [`dist/`](dist):
 
 ## Compilando
 
-O código é C puro com [PS2SDK](https://github.com/ps2dev/ps2sdk) + gsKit
-(sem texturas externas: tudo é desenhado com triângulos).
+O código é C puro com [PS2SDK](https://github.com/ps2dev/ps2sdk) + gsKit.
+
+### Gráficos
+
+A arte fica em `assets/src/` (`sprites.png` com as 36 peças, personagens e
+decorações; `font.png` com a fonte; `title.png` com a tela de título).
+`make assets` (Python + Pillow, numpy, scipy) recorta tudo, remove o fundo
+branco e gera atlas de textura de 8 bits com paleta (T8 + CLUT) em
+`assets/bin/`, que são embutidos no executável. Com 8 bits por pixel, todas as
+texturas da partida (~0,9 MB) cabem juntas na VRAM de 4 MB do PS2.
 
 ```sh
 # Com Docker (imagem oficial ps2dev):
@@ -88,7 +96,8 @@ ELF e a ISO como artefatos.
 | `src/game.c` | Regras, pontuação e IA (independente de plataforma) |
 | `src/ui.c` | Telas, menus e fluxo da partida |
 | `src/draw.c` | Formas, texto e desenho das criaturas |
-| `src/font.c` | Fonte bitmap 5x7 (gerada por `tools/gen_font.py`) |
+| `src/assets.c`, `src/assets_bin.S` | Tabela de sprites e texturas embutidas (gerados por `tools/gen_assets.py`) |
+| `src/font.c` | Fonte bitmap 5x7 para textos bem pequenos (gerada por `tools/gen_font.py`) |
 | `src/main_ps2.c` | Vídeo (gsKit) e controle (libpad) do PS2 |
 | `host/host_main.c` | Rasterizador em software para testar/capturar telas no PC |
 | `tests/test_game.c` | Testes das regras |

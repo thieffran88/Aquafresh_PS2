@@ -11,13 +11,13 @@
 #define STEPS 24
 static float cos_t[STEPS + 1], sin_t[STEPS + 1];
 
-const Color creature_colors[6] = {
-    RGB(70, 160, 255),   /* azul */
-    RGB(95, 215, 95),    /* verde */
-    RGB(255, 140, 205),  /* rosa */
-    RGB(170, 120, 250),  /* roxo */
-    RGB(245, 70, 70),    /* vermelho */
-    RGB(255, 215, 60),   /* amarelo */
+const Color creature_colors[6] = {   /* tons da arte das pecas */
+    RGB(80, 200, 245),   /* azul */
+    RGB(130, 220, 40),   /* verde */
+    RGB(250, 130, 190),  /* rosa */
+    RGB(190, 140, 235),  /* roxo */
+    RGB(240, 70, 30),    /* vermelho */
+    RGB(255, 220, 30),   /* amarelo */
 };
 const char *color_names[6] = { "AZUL", "VERDE", "ROSA", "ROXO", "VERMELHO", "AMARELO" };
 const char *animal_names[6] = { "CARANGUEJO", "PEIXE", "AGUA-VIVA", "CAVALO-MARINHO", "ESTRELA", "TARTARUGA" };
@@ -106,29 +106,76 @@ void draw_frame(float x, float y, float w, float h, float t, Color c)
 
 /* ------------------------------------------------------------------ texto */
 
-int text_width(const char *s, int scale)
+#define GLYPH_ATLAS_H 40.0f
+
+static int is_button(int ch) { return ch == 'x' || ch == 'o' || ch == '^' || ch == '['; }
+
+/* largura de avanco de um caractere na fonte ilustrada com altura gh */
+static float glyph_advance(int ch, float gh)
 {
-    int n = (int)strlen(s);
-    return n ? (n * 6 - 1) * scale : 0;
+    int spr;
+    if (ch == ' ')
+        return gh * 0.38f;
+    if (is_button(ch))
+        return gh * 1.15f;
+    if (ch == '<' || ch == '>')
+        return gh * 0.75f;
+    if (ch == '/')
+        return gh * 0.55f;
+    if (ch >= 'a' && ch <= 'z')
+        ch -= 32;
+    spr = ch < 128 ? glyph_sprite[ch] : -1;
+    if (spr < 0)
+        return gh * 0.5f;
+    return sprite_defs[spr].w * gh / GLYPH_ATLAS_H - gh * 0.20f;
 }
 
-void draw_text(float x, float y, int scale, Color c, const char *s)
+int text_width(const char *s, int scale)
+{
+    float w = 0, gh = 8.0f * scale;
+    int n = (int)strlen(s);
+    if (scale < 2)
+        return n ? (n * 6 - 1) * scale : 0;
+    for (; *s; s++)
+        w += glyph_advance((unsigned char)*s, gh);
+    return (int)(w + gh * 0.20f);
+}
+
+static void draw_button_icon(int ch, float x, float y, float gh, int alpha)
+{
+    float r = gh * 0.5f, cx = x + gh * 0.55f, cy = y + gh * 0.5f;
+    float t = gh * 0.11f + 1, k = r * 0.5f;
+    draw_circle(cx, cy, r, RGBA(10, 15, 30, alpha));
+    draw_circle(cx, cy, r - 1.5f, RGBA(60, 66, 80, alpha));
+    switch (ch) {
+    case 'x':
+        draw_line(cx - k, cy - k, cx + k, cy + k, t, RGBA(120, 180, 255, alpha));
+        draw_line(cx - k, cy + k, cx + k, cy - k, t, RGBA(120, 180, 255, alpha));
+        break;
+    case 'o':
+        draw_circle(cx, cy, k + t * 0.5f, RGBA(255, 100, 110, alpha));
+        draw_circle(cx, cy, k - t * 0.5f, RGBA(60, 66, 80, alpha));
+        break;
+    case '^':
+        draw_line(cx, cy - k, cx + k, cy + k * 0.7f, t, RGBA(90, 230, 170, alpha));
+        draw_line(cx + k, cy + k * 0.7f, cx - k, cy + k * 0.7f, t, RGBA(90, 230, 170, alpha));
+        draw_line(cx - k, cy + k * 0.7f, cx, cy - k, t, RGBA(90, 230, 170, alpha));
+        break;
+    default:
+        draw_frame(cx - k, cy - k, 2 * k, 2 * k, t, RGBA(255, 140, 220, alpha));
+        break;
+    }
+}
+
+static void draw_text_pixel(float x, float y, int scale, Color c, const char *s)
 {
     for (; *s; s++, x += 6 * scale) {
         int ch = (unsigned char)*s;
         int row;
         const unsigned char *g;
-        Color cc = c;
         if (ch < 32 || ch > 127)
             continue;
         g = font_glyphs[ch - 32];
-        /* simbolos dos botoes com as cores classicas */
-        if (COL_R(c) > 60 || COL_G(c) > 60 || COL_B(c) > 60) {
-            if (ch == 'x') cc = RGBA(120, 170, 255, COL_A(c));
-            if (ch == 'o') cc = RGBA(255, 110, 110, COL_A(c));
-            if (ch == '^') cc = RGBA(90, 230, 170, COL_A(c));
-            if (ch == '[') cc = RGBA(255, 140, 220, COL_A(c));
-        }
         for (row = 0; row < 7; row++) {
             int bits = g[row], col = 0;
             while (col < 5) {
@@ -138,22 +185,92 @@ void draw_text(float x, float y, int scale, Color c, const char *s)
                 while (col < 5 && (bits & (0x10 >> col)))
                     col++;
                 gfx_rect(x + start * scale, y + row * scale,
-                         (float)((col - start) * scale), (float)scale, cc);
+                         (float)((col - start) * scale), (float)scale, c);
             }
         }
     }
 }
 
+void draw_text(float x, float y, int scale, Color c, const char *s)
+{
+    float gh = 8.0f * scale;
+    int alpha = (int)COL_A(c);
+    /* scale 2 (textos corridos): fonte clara que recebe a cor 'c'.
+     * scale >= 3 (titulos): fonte ilustrada original; 'c' so clareia/escurece. */
+    const short *table = scale == 2 ? glyph_sprite_plain : glyph_sprite;
+    int lum = ((int)COL_R(c) * 3 + (int)COL_G(c) * 6 + (int)COL_B(c)) / 10;
+    int m = lum > 200 ? 255 : 120 + lum * 135 / 200;
+    Color mod = scale == 2 ? c : RGBA(m, m, m, alpha);
+
+    if (scale < 2) {
+        draw_text_pixel(x, y, scale, c, s);
+        return;
+    }
+    y -= scale * 0.5f;
+    for (; *s; s++) {
+        int ch = (unsigned char)*s;
+        float adv = glyph_advance(ch, gh);
+        if (is_button(ch)) {
+            draw_button_icon(ch, x, y, gh, alpha);
+        } else if (ch == '<' || ch == '>') {
+            float w = gh * 0.55f, cx = x + gh * 0.1f, cy = y + gh * 0.5f;
+            Color o = RGBA(10, 20, 40, alpha), f = RGBA(255, 215, 40, alpha);
+            if (ch == '<') {
+                gfx_tri(cx + w + 2, cy - gh * 0.42f, cx + w + 2, cy + gh * 0.42f, cx - 2, cy, o);
+                gfx_tri(cx + w, cy - gh * 0.32f, cx + w, cy + gh * 0.32f, cx + 1, cy, f);
+            } else {
+                gfx_tri(cx - 2, cy - gh * 0.42f, cx - 2, cy + gh * 0.42f, cx + w + 2, cy, o);
+                gfx_tri(cx, cy - gh * 0.32f, cx, cy + gh * 0.32f, cx + w - 1, cy, f);
+            }
+        } else if (ch == '/') {
+            draw_line(x + gh * 0.45f, y + gh * 0.08f, x + gh * 0.05f, y + gh * 0.92f, gh * 0.22f,
+                      RGBA(10, 20, 40, alpha));
+            draw_line(x + gh * 0.45f, y + gh * 0.08f, x + gh * 0.05f, y + gh * 0.92f, gh * 0.11f,
+                      RGBA(80, 190, 255, alpha));
+        } else if (ch != ' ') {
+            int spr;
+            if (ch >= 'a' && ch <= 'z')
+                ch -= 32;
+            spr = ch < 128 ? table[ch] : -1;
+            if (spr >= 0)
+                draw_sprite(spr, x, y, sprite_defs[spr].w * gh / GLYPH_ATLAS_H, gh, mod);
+        }
+        x += adv;
+    }
+}
+
 void draw_text_shadow(float x, float y, int scale, Color c, const char *s)
 {
-    float d = scale > 1 ? (float)(scale / 2 + 1) : 1.0f;
-    draw_text(x + d, y + d, scale, RGBA(0, 20, 50, 160), s);
+    if (scale < 2) {
+        draw_text(x + 1, y + 1, scale, RGBA(0, 20, 50, 200), s);
+    }
     draw_text(x, y, scale, c, s);
 }
 
 void draw_text_center(float cx, float y, int scale, Color c, const char *s)
 {
     draw_text_shadow(cx - text_width(s, scale) / 2.0f, y, scale, c, s);
+}
+
+/* ---------------------------------------------------------------- sprites */
+
+void draw_sprite(int spr, float x, float y, float w, float h, Color mod)
+{
+    const SpriteDef *d = &sprite_defs[spr];
+    gfx_sprite(d->atlas, x, y, w, h, (float)d->x, (float)d->y,
+               (float)(d->x + d->w), (float)(d->y + d->h), mod);
+}
+
+float sprite_width_for(int spr, float h)
+{
+    return sprite_defs[spr].w * h / sprite_defs[spr].h;
+}
+
+float draw_sprite_h(int spr, float x, float y, float h, Color mod)
+{
+    float w = sprite_width_for(spr, h);
+    draw_sprite(spr, x, y, w, h, mod);
+    return w;
 }
 
 /* --------------------------------------------------------------- criaturas */
@@ -316,27 +433,19 @@ void draw_animal(int animal, float x, float y, float s, Color c, Color bg)
     }
 }
 
-#define TILE_BG     RGB(18, 38, 92)
-#define TILE_EDGE   RGB(40, 72, 150)
-#define TILE_SHADOW RGBA(0, 10, 30, 120)
-
-void draw_tile(int tile, float x, float y, float s)
+void draw_tile_mod(int tile, float x, float y, float w, float h, Color mod)
 {
-    float r = s * 0.14f;
-    draw_round_rect(x + 3, y + 4, s, s, r, TILE_SHADOW);
-    draw_round_rect(x, y, s, s, r, TILE_EDGE);
-    draw_round_rect(x + 2, y + 2, s - 4, s - 4, r * 0.8f, TILE_BG);
-    if (tile >= 0)
-        draw_animal(TILE_ANIMAL(tile), x + s * 0.08f, y + s * 0.08f, s * 0.84f,
-                    creature_colors[TILE_COLOR(tile)], TILE_BG);
+    draw_round_rect(x + 2, y + 3, w - 1, h - 1, w * 0.14f, RGBA(0, 10, 30, 110));
+    draw_sprite(SPR_TILE_00 + tile, x, y, w, h, mod);
 }
 
-void draw_tile_back(float x, float y, float s)
+void draw_tile(int tile, float x, float y, float w, float h)
 {
-    float r = s * 0.14f;
-    draw_round_rect(x + 2, y + 3, s, s, r, TILE_SHADOW);
-    draw_round_rect(x, y, s, s, r, TILE_EDGE);
-    draw_round_rect(x + 2, y + 2, s - 4, s - 4, r * 0.8f, RGB(26, 52, 120));
-    /* onda decorativa */
-    draw_ellipse_sector(x + s * 0.5f, y + s * 0.62f, s * 0.22f, s * 0.14f, 12, 24, RGB(46, 88, 170));
+    draw_tile_mod(tile, x, y, w, h, RGB(255, 255, 255));
+}
+
+void draw_tile_back(float x, float y, float w, float h)
+{
+    draw_round_rect(x + 2, y + 3, w - 1, h - 1, w * 0.14f, RGBA(0, 10, 30, 110));
+    draw_sprite(SPR_SLOT_DARK, x, y, w, h, RGB(255, 255, 255));
 }

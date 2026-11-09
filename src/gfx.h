@@ -22,5 +22,9 @@ typedef unsigned int Color;   /* 0xRRGGBBAA, alfa 255 = opaco */
 void gfx_rect(float x, float y, float w, float h, Color c);
 void gfx_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color c);
 void gfx_rect_vgrad(float x, float y, float w, float h, Color top, Color bottom);
+/* Desenha um retangulo texturizado do atlas 'atlas' (ver assets.h).
+ * u/v em texels; 'mod' multiplica a cor da textura (branco = original). */
+void gfx_sprite(int atlas, float x, float y, float w, float h,
+                float u0, float v0, float u1, float v1, Color mod);
 
 #endif

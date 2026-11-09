@@ -12,18 +12,20 @@ enum { PH_MOVE, PH_MOVE_DEST, PH_PICK, PH_DROP, PH_CPU, PH_END };
 
 /* ---------------------------------------------------------------- layout */
 #define BOARD_X   30
-#define BOARD_Y   58
-#define CELL      58
-#define TILE_IN   3
-#define PANEL_X   400
-#define PANEL_W   220
-#define CARD_H    66
-#define CARD1_Y   54
-#define CARD2_Y   126
-#define POOL_Y    222
-#define POOL_S    60
-#define POOL_GAP  8
-#define HELP_Y    420
+#define BOARD_Y   66
+#define CELL_W    62      /* as pecas da arte sao um pouco mais largas que altas */
+#define CELL_H    54
+#define TILE_IN   1
+#define PANEL_X   418
+#define PANEL_W   206
+#define CARD_H    70
+#define CARD1_Y   58
+#define CARD2_Y   134
+#define POOL_Y    236
+#define POOL_W    60
+#define POOL_H    52
+#define POOL_GAP  6
+#define HELP_Y    421
 
 /* ----------------------------------------------------------------- estado */
 static int state = ST_TITLE, rules_return = ST_TITLE;
@@ -79,15 +81,15 @@ static const char *role_name(int role)
 
 static void cell_pos(int cell, float *x, float *y)
 {
-    *x = (float)(BOARD_X + (cell % BOARD_N) * CELL);
-    *y = (float)(BOARD_Y + (cell / BOARD_N) * CELL);
+    *x = (float)(BOARD_X + (cell % BOARD_N) * CELL_W);
+    *y = (float)(BOARD_Y + (cell / BOARD_N) * CELL_H);
 }
 
 static void pool_pos(int i, float *x, float *y)
 {
-    float total = 3 * POOL_S + 2 * POOL_GAP;
-    *x = PANEL_X + (PANEL_W - total) / 2 + (i % 3) * (POOL_S + POOL_GAP);
-    *y = (float)(POOL_Y + (i / 3) * (POOL_S + POOL_GAP));
+    float total = 3 * POOL_W + 2 * POOL_GAP;
+    *x = PANEL_X + (PANEL_W - total) / 2 + (i % 3) * (POOL_W + POOL_GAP);
+    *y = (float)(POOL_Y + (i / 3) * (POOL_H + POOL_GAP));
 }
 
 static void set_msg(const char *m)
@@ -469,32 +471,53 @@ void ui_update(unsigned int held)
 
 /* ---------------------------------------------------------------- desenho */
 
-static void draw_background(void)
+#define WHITE RGB(255, 255, 255)
+#define CW (CELL_W - 2 * TILE_IN)
+#define CH (CELL_H - 2 * TILE_IN)
+
+static void draw_bubbles(int count)
 {
     int i;
-    gfx_rect_vgrad(0, 0, SCREEN_W, SCREEN_H, RGB(20, 120, 190), RGB(6, 30, 80));
-    /* raios de luz */
-    for (i = 0; i < 4; i++) {
-        float x = 60.0f + i * 170.0f + (float)pulse(600 + i * 97, 0, 40);
-        gfx_tri(x, 0, x + 70, 0, x - 60, SCREEN_H, RGBA(200, 240, 255, 18));
+    for (i = 0; i < count; i++) {
+        unsigned int h = (unsigned)(i + 1) * 2654435761u;
+        float speed = 0.35f + (h % 7) * 0.09f;
+        float x = (float)(h % SCREEN_W) + (float)pulse(120 + i * 13, -8, 8);
+        float y = SCREEN_H + 30 - (float)((unsigned)((frame_no + h % 997) * speed) % (SCREEN_H + 60));
+        float r = 6.0f + (h >> 8) % 12;
+        draw_sprite(SPR_BUBBLE, x, y, r, r, RGBA(255, 255, 255, 190));
     }
-    /* bolhas */
-    for (i = 0; i < 14; i++) {
-        unsigned int h = (unsigned)i * 2654435761u;
-        float speed = 0.3f + (h % 7) * 0.08f;
-        float x = (float)(h % SCREEN_W) + (float)pulse(120 + i * 13, -6, 6);
-        float y = SCREEN_H + 20 - (float)((unsigned)((frame_no + h % 997) * speed) % (SCREEN_H + 40));
-        float r = 2.0f + (h >> 8) % 5;
-        draw_circle(x, y, r, RGBA(220, 245, 255, 70));
-        draw_circle(x - r * 0.3f, y - r * 0.3f, r * 0.35f, RGBA(255, 255, 255, 110));
+}
+
+static void draw_background(int title)
+{
+    gfx_sprite(title ? ATLAS_BG_TITLE : ATLAS_BG_PLAY, 0, 0, SCREEN_W, SCREEN_H,
+               0, 0, SCREEN_W, SCREEN_H, WHITE);
+    if (!title)
+        gfx_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(0, 20, 60, 70));   /* realca as pecas */
+    draw_bubbles(title ? 8 : 12);
+}
+
+/* corais e pedras atras do recife */
+static void draw_reef_decor(void)
+{
+    float sway = (float)pulse(240, -2, 2);
+    draw_sprite_h(SPR_WEED, -4 + sway, 300, 96, WHITE);
+    draw_sprite_h(SPR_CORAL_PINK, -16, 352, 80, WHITE);
+    draw_sprite_h(SPR_CORAL_ORANGE, 352, 340, 76, WHITE);
+    draw_sprite_h(SPR_CORAL_PURPLE, 376 - sway, 320, 72, WHITE);
+    draw_sprite_h(SPR_ROCKS, 300, 382, 46, WHITE);
+}
+
+static void draw_avatar(int p, float x, float y, float box_w, float box_h)
+{
+    int spr = p == 0 ? SPR_CRAB : SPR_PUFFER;
+    float h = box_h, w = sprite_width_for(spr, h);
+    float bob = (game.turn == p && state == ST_PLAY) ? (float)pulse(50, 0, 4) : 0.0f;
+    if (w > box_w) {
+        h = h * box_w / w;
+        w = box_w;
     }
-    /* areia e algas */
-    for (i = 0; i < 9; i++) {
-        float x = 10.0f + i * 75.0f;
-        float sway = (float)pulse(180 + i * 11, -8, 8);
-        Color alga = (i & 1) ? RGBA(40, 160, 110, 140) : RGBA(30, 130, 90, 140);
-        draw_line(x, SCREEN_H, x + sway, SCREEN_H - 40 - (i % 3) * 14, 7, alga);
-    }
+    draw_sprite(spr, x + (box_w - w) / 2, y + (box_h - h) / 2 - bob, w, h, WHITE);
 }
 
 static void draw_mini_role(int role, float x, float y, float s)
@@ -502,46 +525,51 @@ static void draw_mini_role(int role, float x, float y, float s)
     int i;
     for (i = 0; i < 6; i++) {
         float xx = x + i * (s + 3);
-        if (role == ROLE_COLOR)
+        if (role == ROLE_COLOR) {
+            draw_round_rect(xx - 1, y - 1, s + 2, s + 2, s * 0.3f, RGBA(0, 10, 30, 220));
             draw_round_rect(xx, y, s, s, s * 0.25f, creature_colors[i]);
-        else
+        } else {
             draw_animal(i, xx - 1, y - 1, s + 2, RGB(235, 240, 255), RGB(18, 38, 92));
+        }
     }
+}
+
+static void card_box(float y, float h, int active)
+{
+    if (active)
+        draw_round_rect(PANEL_X - 3, y - 3, PANEL_W + 6, h + 6, 13,
+                        RGBA(255, 220, 60, pulse(60, 90, 200)));
+    draw_round_rect(PANEL_X, y, PANEL_W, h, 11, RGBA(10, 20, 50, 230));
+    draw_round_rect(PANEL_X + 2, y + 2, PANEL_W - 4, h - 4, 10,
+                    active ? RGBA(20, 80, 160, 235) : RGBA(14, 48, 104, 225));
 }
 
 static void draw_player_card(int p, float y)
 {
     char buf[16];
     int active = (state == ST_PLAY || state == ST_PAUSE) && game.turn == p && phase != PH_END;
-    Color border = active ? RGB(120, 240, 255) : RGBA(150, 200, 255, 90);
     int score = game_score_player(&game, p, 0);
 
-    if (active)
-        draw_round_rect(PANEL_X - 3, y - 3, PANEL_W + 6, CARD_H + 6, 12,
-                        RGBA(120, 240, 255, pulse(60, 40, 120)));
-    draw_round_rect(PANEL_X, y, PANEL_W, CARD_H, 10, border);
-    draw_round_rect(PANEL_X + 2, y + 2, PANEL_W - 4, CARD_H - 4, 9, RGBA(6, 24, 64, 230));
-    draw_text_shadow(PANEL_X + 10, y + 8, 2, active ? RGB(255, 255, 255) : RGB(180, 200, 230),
-                     player_name(p));
-    draw_text(PANEL_X + 10, y + 28, 2, RGB(140, 220, 255), role_name(game.role[p]));
-    draw_mini_role(game.role[p], PANEL_X + 10, y + 47, 11);
+    card_box(y, CARD_H, active);
+    draw_avatar(p, PANEL_X + 3, y + 10, 42, 40);
+    draw_text(PANEL_X + 48, y + 7, 2, active ? RGB(255, 230, 90) : WHITE, player_name(p));
+    draw_text(PANEL_X + 48, y + 29, 2, RGB(150, 220, 255), role_name(game.role[p]));
+    draw_mini_role(game.role[p], PANEL_X + 48, y + 52, 10);
     snprintf(buf, sizeof(buf), "%d", score);
-    draw_text_shadow(PANEL_X + PANEL_W - 12 - text_width(buf, 4), y + 12, 4,
-                     RGB(255, 230, 120), buf);
-    draw_text(PANEL_X + PANEL_W - 12 - text_width("PTS", 1), y + 50, 1, RGB(180, 200, 230), "PTS");
+    draw_text(PANEL_X + PANEL_W - 8 - text_width(buf, 4), y + 24, 4, WHITE, buf);
 }
 
 static void board_frame(void)
 {
     int i;
-    float bw = BOARD_N * CELL;
-    draw_round_rect(BOARD_X - 12, BOARD_Y - 12, bw + 24, bw + 24, 16, RGBA(160, 230, 255, 90));
-    draw_round_rect(BOARD_X - 8, BOARD_Y - 8, bw + 16, bw + 16, 13, RGBA(30, 110, 170, 220));
+    float bw = BOARD_N * CELL_W, bh = BOARD_N * CELL_H;
+    draw_round_rect(BOARD_X - 10, BOARD_Y - 10, bw + 20, bh + 20, 16, RGBA(10, 20, 50, 220));
+    draw_round_rect(BOARD_X - 7, BOARD_Y - 7, bw + 14, bh + 14, 13, RGBA(90, 190, 240, 230));
+    draw_round_rect(BOARD_X - 4, BOARD_Y - 4, bw + 8, bh + 8, 11, RGBA(20, 70, 140, 235));
     for (i = 0; i < BOARD_CELLS; i++) {
         float x, y;
         cell_pos(i, &x, &y);
-        draw_round_rect(x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN, CELL - 2 * TILE_IN, 7,
-                        RGBA(140, 215, 245, 70));
+        draw_sprite(SPR_SLOT_LIGHT, x + TILE_IN, y + TILE_IN, CW, CH, RGBA(255, 255, 255, 120));
     }
 }
 
@@ -568,12 +596,20 @@ static void schools_mask(unsigned char *in_school, int role)
     }
 }
 
+static void cell_frame(int cell, float grow, float t, Color c)
+{
+    float x, y;
+    cell_pos(cell, &x, &y);
+    draw_frame(x - grow, y - grow, CELL_W + 2 * grow, CELL_H + 2 * grow, t, c);
+}
+
 static void draw_board(int interactive)
 {
     int i, cell = cur_r * BOARD_N + cur_c;
     unsigned char in_school[BOARD_CELLS];
     int dim = state == ST_RESULT;
 
+    draw_reef_decor();
     board_frame();
     if (dim)
         schools_mask(in_school, result_view);
@@ -583,18 +619,16 @@ static void draw_board(int interactive)
         for (i = 0; i < ntargets; i++) {
             float x, y;
             cell_pos(targets[i], &x, &y);
-            draw_round_rect(x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN, CELL - 2 * TILE_IN, 7,
-                            RGBA(120, 255, 160, pulse(50, 60, 130)));
-            draw_circle(x + CELL / 2, y + CELL / 2, 6, RGBA(200, 255, 210, 200));
+            draw_round_rect(x + 2, y + 2, CELL_W - 4, CELL_H - 4, 8,
+                            RGBA(120, 255, 160, pulse(50, 70, 150)));
+            draw_sprite(SPR_BUBBLE, x + CELL_W / 2 - 9, y + CELL_H / 2 - 9, 18, 18, WHITE);
         }
     }
 
-    /* marcas da ultima jogada */
     if (mark_from >= 0 && state != ST_RESULT) {
         float x, y;
         cell_pos(mark_from, &x, &y);
-        draw_frame(x + TILE_IN + 4, y + TILE_IN + 4, CELL - 2 * TILE_IN - 8, CELL - 2 * TILE_IN - 8,
-                   2, RGBA(255, 220, 120, 150));
+        draw_frame(x + 6, y + 6, CELL_W - 12, CELL_H - 12, 2, RGBA(255, 220, 120, 170));
     }
 
     for (i = 0; i < BOARD_CELLS; i++) {
@@ -608,43 +642,33 @@ static void draw_board(int interactive)
             x = anim.x0 + (x - anim.x0) * t;
             y = anim.y0 + (y - anim.y0) * t;
         }
-        draw_tile(game.board[i], x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN);
         if (dim && !in_school[i])
-            draw_round_rect(x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN, CELL - 2 * TILE_IN, 7,
-                            RGBA(4, 16, 40, 175));
+            draw_tile_mod(game.board[i], x + TILE_IN, y + TILE_IN, CW, CH, RGB(90, 100, 120));
+        else
+            draw_tile(game.board[i], x + TILE_IN, y + TILE_IN, CW, CH);
     }
 
     if (state != ST_RESULT && !anim.active) {
-        if (mark_to >= 0) {
-            float x, y;
-            cell_pos(mark_to, &x, &y);
-            draw_frame(x + 1, y + 1, CELL - 2, CELL - 2, 3, RGBA(255, 220, 120, 220));
-        }
-        if (mark_cell >= 0) {
-            float x, y;
-            cell_pos(mark_cell, &x, &y);
-            draw_frame(x + 1, y + 1, CELL - 2, CELL - 2, 3, RGBA(255, 255, 255, 200));
-        }
+        if (mark_to >= 0)
+            cell_frame(mark_to, -1, 3, RGBA(255, 220, 80, 230));
+        if (mark_cell >= 0)
+            cell_frame(mark_cell, -1, 3, RGBA(255, 255, 255, 210));
     }
 
     if (!interactive)
         return;
 
-    if (sel_cell >= 0) {
-        float x, y;
-        cell_pos(sel_cell, &x, &y);
-        draw_frame(x - 2, y - 2, CELL + 4, CELL + 4, 4, RGB(255, 160, 40));
-    }
+    if (sel_cell >= 0)
+        cell_frame(sel_cell, 2, 4, RGB(255, 150, 30));
 
     if (phase == PH_MOVE || phase == PH_MOVE_DEST || phase == PH_DROP) {
         float x, y;
         cell_pos(cell, &x, &y);
-        if (phase == PH_DROP && game.board[cell] == EMPTY && game.pool_n > 0) {
-            draw_tile(game.pool[pool_sel], x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN);
-            draw_round_rect(x + TILE_IN, y + TILE_IN, CELL - 2 * TILE_IN, CELL - 2 * TILE_IN, 7,
-                            RGBA(255, 255, 255, pulse(40, 20, 70)));
-        }
-        draw_frame(x - 3, y - 3, CELL + 6, CELL + 6, 4, RGBA(255, 255, 255, pulse(40, 150, 255)));
+        if (phase == PH_DROP && game.board[cell] == EMPTY && game.pool_n > 0)
+            draw_tile_mod(game.pool[pool_sel], x + TILE_IN, y + TILE_IN - 3, CW, CH,
+                          RGBA(255, 255, 255, pulse(40, 170, 240)));
+        cell_frame(cell, 4, 2, RGB(10, 20, 40));
+        cell_frame(cell, 3, 4, RGBA(255, 255, 255, pulse(40, 170, 255)));
     }
 }
 
@@ -652,72 +676,73 @@ static void draw_pool(int interactive)
 {
     int i;
     char buf[24];
-    draw_text_shadow(PANEL_X + 4, POOL_Y - 22, 2, RGB(220, 240, 255), "VIVEIRO");
+    draw_text(PANEL_X + 4, POOL_Y - 24, 2, WHITE, "VIVEIRO");
     for (i = 0; i < POOL_MAX; i++) {
         float x, y;
         pool_pos(i, &x, &y);
-        draw_round_rect(x, y, POOL_S, POOL_S, 8, RGBA(140, 215, 245, 50));
+        draw_sprite(SPR_SLOT_LIGHT, x, y, POOL_W, POOL_H, RGBA(255, 255, 255, 90));
         if (i < game.pool_n) {
             int sel = interactive && i == pool_sel &&
                       (phase == PH_PICK || phase == PH_DROP || (phase == PH_CPU && cpu_step >= 2));
-            float lift = sel ? (phase == PH_DROP ? -6.0f : (float)-pulse(30, 0, 4)) : 0.0f;
+            float lift = sel ? (phase == PH_DROP ? -5.0f : (float)-pulse(30, 0, 4)) : 0.0f;
             if (sel)
-                draw_round_rect(x - 4, y - 4 + lift, POOL_S + 8, POOL_S + 8, 10,
-                                phase == PH_CPU ? RGB(255, 120, 120) : RGB(255, 255, 255));
-            draw_tile(game.pool[i], x, y + lift, POOL_S);
+                draw_round_rect(x - 4, y - 4 + lift, POOL_W + 8, POOL_H + 8, 11,
+                                phase == PH_CPU ? RGB(255, 110, 110) : RGB(255, 220, 60));
+            draw_tile(game.pool[i], x, y + lift, POOL_W, POOL_H);
         }
     }
     /* estoque */
     {
-        float y = POOL_Y + 2 * POOL_S + POOL_GAP + 10;
+        float y = POOL_Y + 2 * POOL_H + POOL_GAP + 12;
         int n = game.stock_n < 3 ? game.stock_n : 3;
         for (i = 0; i < n; i++)
-            draw_tile_back(PANEL_X + 8 + i * 4, y - i * 3, 34);
-        snprintf(buf, sizeof(buf), "ESTOQUE: %d", game.stock_n);
-        draw_text_shadow(PANEL_X + 56, y + 10, 2, RGB(200, 225, 255), buf);
+            draw_tile_back(PANEL_X + 6 + i * 4, y - i * 3, 40, 35);
+        snprintf(buf, sizeof(buf), "ESTOQUE %d", game.stock_n);
+        draw_text(PANEL_X + 62, y + 9, 2, WHITE, buf);
     }
 }
 
 static void draw_help(const char *text, Color c)
 {
-    gfx_rect(0, HELP_Y - 6, SCREEN_W, 30, RGBA(0, 10, 30, 150));
+    gfx_rect(0, HELP_Y - 7, SCREEN_W, 34, RGBA(0, 10, 30, 190));
+    gfx_rect(0, HELP_Y - 7, SCREEN_W, 2, RGBA(90, 190, 240, 200));
     draw_text_center(SCREEN_W / 2, HELP_Y, 2, c, text);
 }
 
 static void draw_banner(const char *text, int alpha)
 {
-    int w = text_width(text, 3) + 40;
-    float x = BOARD_X + BOARD_N * CELL / 2 - w / 2;
-    float y = BOARD_Y + BOARD_N * CELL / 2 - 26;
-    draw_round_rect(x, y, (float)w, 52, 14, RGBA(0, 20, 60, alpha * 200 / 255));
-    draw_frame(x + 6, y + 6, w - 12, 40, 2, RGBA(120, 240, 255, alpha));
-    draw_text(x + 20, y + 16, 3, RGBA(255, 255, 255, alpha), text);
+    int w = text_width(text, 4) + 100;
+    float x = BOARD_X + BOARD_N * CELL_W / 2 - w / 2;
+    float y = BOARD_Y + BOARD_N * CELL_H / 2 - 32;
+    draw_round_rect(x, y, (float)w, 64, 18, RGBA(10, 20, 50, alpha * 230 / 255));
+    draw_round_rect(x + 3, y + 3, (float)w - 6, 58, 16, RGBA(30, 110, 190, alpha * 230 / 255));
+    draw_sprite_h(SPR_STARFISH, x - 20, y - 14, 76, RGBA(255, 255, 255, alpha));
+    draw_text(x + 76, y + 15, 4, RGBA(255, 255, 255, alpha), text);
 }
 
 static void draw_phase_info(void)
 {
     const char *l = "";
     switch (phase) {
-    case PH_MOVE:      l = "1. MOVER (OPCIONAL)"; break;
-    case PH_MOVE_DEST: l = "1. MOVER"; break;
+    case PH_MOVE:      l = "1 MOVER"; break;
+    case PH_MOVE_DEST: l = "1 MOVER"; break;
     case PH_PICK:
-    case PH_DROP:      l = "2. COLOCAR"; break;
+    case PH_DROP:      l = "2 COLOCAR"; break;
     case PH_CPU:       l = cpu_step == 0 ? "CPU PENSANDO..." : "CPU JOGANDO"; break;
     default:           l = "RECIFE CHEIO!"; break;
     }
-    draw_text_shadow(PANEL_X + PANEL_W - text_width(l, 2), 20, 2, RGB(255, 230, 120), l);
+    draw_text(PANEL_X + PANEL_W - text_width(l, 2), 26, 2, WHITE, l);
 }
 
 static void draw_title_bar(void)
 {
-    draw_text_shadow(BOARD_X - 6, 14, 3, RGB(255, 255, 255), "AQUAFRESH");
-    draw_text_shadow(BOARD_X - 6 + text_width("AQUAFRESH ", 3), 14, 3, RGB(120, 240, 255), "PS2");
+    draw_text(BOARD_X - 8, 12, 4, WHITE, "AQUAFRESH PS2");
 }
 
 static void draw_play(void)
 {
     char buf[48];
-    int interactive = state == ST_PLAY && !is_cpu[game.turn];
+    int interactive = !is_cpu[game.turn];
     draw_title_bar();
     draw_board(state == ST_PLAY && phase != PH_CPU && phase != PH_END);
     draw_player_card(0, CARD1_Y);
@@ -729,7 +754,7 @@ static void draw_play(void)
         draw_help(msg, RGB(255, 170, 150));
     } else if (!interactive) {
         draw_help(phase == PH_END ? "CONTANDO OS CARDUMES..." : "CPU JOGANDO...   START PAUSA",
-                  RGB(220, 235, 255));
+                  WHITE);
     } else {
         const char *h = "";
         switch (phase) {
@@ -738,7 +763,7 @@ static void draw_play(void)
         case PH_PICK:      h = game_first_turn(&game) ? "x ESCOLHER CRIATURA" : "x ESCOLHER CRIATURA   o VOLTAR"; break;
         case PH_DROP:      h = "x COLOCAR   L1/R1 TROCAR   o VOLTAR"; break;
         }
-        draw_help(h, RGB(220, 235, 255));
+        draw_help(h, WHITE);
     }
 
     if (state == ST_PLAY && banner_timer > 0 && !is_cpu[game.turn]) {
@@ -751,44 +776,49 @@ static void draw_play(void)
 static void draw_menu_item(float cx, float y, int scale, const char *s, int sel)
 {
     if (sel) {
-        int w = text_width(s, scale) + 40;
-        draw_round_rect(cx - w / 2, y - 8, (float)w, 7 * scale + 16, 10,
-                        RGBA(120, 240, 255, pulse(60, 70, 140)));
+        int w = text_width(s, scale) + 44;
+        draw_round_rect(cx - w / 2 - 2, y - 7, (float)w + 4, 8 * scale + 14, 14, RGBA(10, 20, 50, 230));
+        draw_round_rect(cx - w / 2, y - 5, (float)w, 8 * scale + 10, 12,
+                        RGBA(255, 210, 50, pulse(60, 170, 250)));
     }
-    draw_text_center(cx, y, scale, sel ? RGB(255, 255, 255) : RGB(170, 205, 240), s);
+    draw_text_center(cx, y, scale, sel ? WHITE : RGB(170, 180, 200), s);
 }
 
 static void draw_title(void)
 {
     static const char *items[MENU_ITEMS] = { "1 JOGADOR", "2 JOGADORES", "COMO JOGAR" };
     int i;
-    float bob;
-    draw_text_center(SCREEN_W / 2 + 3, 46, 9, RGB(10, 60, 130), "AQUAFRESH");
-    draw_text_center(SCREEN_W / 2, 42, 9, RGB(240, 252, 255), "AQUAFRESH");
-    draw_round_rect(SCREEN_W / 2 - 62, 118, 124, 46, 12, RGB(120, 240, 255));
-    draw_text_center(SCREEN_W / 2, 125, 5, RGB(10, 50, 110), "PS2");
-    draw_text_center(SCREEN_W / 2, 178, 2, RGB(210, 240, 255), "FORME OS MAIORES CARDUMES DO RECIFE");
-    for (i = 0; i < 6; i++) {
-        bob = (float)pulse(90 + i * 7, -5, 5);
-        draw_tile(MAKE_TILE(i, (i * 5 + 2) % 6), 118 + i * 70, 208 + bob, 56);
-    }
+    draw_round_rect(SCREEN_W / 2 - 150, 290, 300, 128, 18, RGBA(10, 20, 50, 200));
+    draw_round_rect(SCREEN_W / 2 - 146, 294, 292, 120, 15, RGBA(20, 80, 160, 190));
     for (i = 0; i < MENU_ITEMS; i++)
-        draw_menu_item(SCREEN_W / 2, 296 + i * 38, 3, items[i], i == menu_sel);
-    draw_help("x CONFIRMAR", RGB(220, 235, 255));
+        draw_menu_item(SCREEN_W / 2, 304 + i * 38, 3, items[i], i == menu_sel);
+    draw_text_center(SCREEN_W / 2, 428, 2, WHITE, "x CONFIRMAR");
+}
+
+static void dim_screen(int a)
+{
+    gfx_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(0, 15, 45, a));
+}
+
+static void big_panel(float x, float y, float w, float h)
+{
+    draw_round_rect(x, y, w, h, 18, RGBA(10, 20, 50, 230));
+    draw_round_rect(x + 3, y + 3, w - 6, h - 6, 16, RGBA(90, 190, 240, 220));
+    draw_round_rect(x + 6, y + 6, w - 12, h - 12, 14, RGBA(10, 34, 80, 240));
 }
 
 static void draw_option_row(float y, const char *label, const char *value, int sel, int arrows)
 {
     if (sel)
-        draw_round_rect(70, y - 8, 500, 34, 10, RGBA(120, 240, 255, pulse(60, 60, 120)));
-    draw_text_shadow(90, y, 2, sel ? RGB(255, 255, 255) : RGB(170, 205, 240), label);
+        draw_round_rect(84, y - 7, 472, 32, 12, RGBA(255, 210, 50, pulse(60, 90, 160)));
+    draw_text(100, y, 2, sel ? WHITE : RGB(180, 190, 210), label);
     if (value) {
         char buf[40];
         if (arrows)
             snprintf(buf, sizeof(buf), "< %s >", value);
         else
             snprintf(buf, sizeof(buf), "%s", value);
-        draw_text_shadow(550 - text_width(buf, 2), y, 2, RGB(255, 230, 120), buf);
+        draw_text(540 - text_width(buf, 2), y, 2, WHITE, buf);
     }
 }
 
@@ -797,10 +827,10 @@ static void draw_setup(void)
     static const char *levels[3] = { "FACIL", "NORMAL", "DIFICIL" };
     char buf[64];
     int row = 0;
-    float y = 120;
-    draw_text_center(SCREEN_W / 2, 36, 4, RGB(255, 255, 255),
-                     num_humans == 1 ? "1 JOGADOR" : "2 JOGADORES");
-    draw_round_rect(50, 96, 540, 270, 16, RGBA(0, 20, 60, 170));
+    float y = 128;
+    dim_screen(60);
+    draw_text_center(SCREEN_W / 2, 26, 5, WHITE, num_humans == 1 ? "1 JOGADOR" : "2 JOGADORES");
+    big_panel(70, 92, 500, 296);
 
     if (num_humans == 1) {
         draw_option_row(y, "SEUS CARDUMES", role_name(opt_role), setup_sel == row++, 1);
@@ -810,8 +840,7 @@ static void draw_setup(void)
         draw_option_row(y, "QUEM COMECA", opt_first == 0 ? "VOCE" : "CPU", setup_sel == row++, 1);
         y += 44;
     } else {
-        snprintf(buf, sizeof(buf), "%s", role_name(opt_role));
-        draw_option_row(y, "JOGADOR 1 FORMA", buf, setup_sel == row++, 1);
+        draw_option_row(y, "JOGADOR 1 FORMA", role_name(opt_role), setup_sel == row++, 1);
         y += 44;
         draw_option_row(y, "QUEM COMECA", opt_first == 0 ? "JOGADOR 1" : "JOGADOR 2",
                         setup_sel == row++, 1);
@@ -819,15 +848,17 @@ static void draw_setup(void)
     }
     draw_option_row(y, "COMECAR PARTIDA!", 0, setup_sel == row, 0);
 
+    /* quem forma o que */
     y = 300;
-    snprintf(buf, sizeof(buf), "%s: CARDUMES DE %s", num_humans == 1 ? "VOCE" : "JOGADOR 1",
-             opt_role == ROLE_COLOR ? "MESMA COR" : "MESMO ANIMAL");
-    draw_text_center(SCREEN_W / 2, y, 2, RGB(200, 235, 255), buf);
-    draw_mini_role(opt_role, SCREEN_W / 2 - 50 - 60, y + 24, 14);
-    snprintf(buf, sizeof(buf), "%s", num_humans == 1 ? "CPU" : "JOGADOR 2");
-    draw_text(SCREEN_W / 2 + 40, y + 26, 2, RGB(200, 235, 255), buf);
-    draw_mini_role(opt_role ^ 1, SCREEN_W / 2 + 40 + text_width(buf, 2) + 10, y + 24, 14);
-    draw_help("DIRECIONAL ALTERA   x CONFIRMAR   o VOLTAR", RGB(220, 235, 255));
+    draw_avatar(0, 96, y - 4, 60, 52);
+    snprintf(buf, sizeof(buf), "%s %s", player_name(0), role_name(opt_role));
+    draw_text(162, y, 2, WHITE, buf);
+    draw_mini_role(opt_role, 162, y + 24, 14);
+    draw_avatar(1, 336, y - 4, 60, 52);
+    snprintf(buf, sizeof(buf), "%s %s", player_name(1), role_name(opt_role ^ 1));
+    draw_text(402, y, 2, WHITE, buf);
+    draw_mini_role(opt_role ^ 1, 402, y + 24, 14);
+    draw_help("DIRECIONAL ALTERA   x CONFIRMAR   o VOLTAR", WHITE);
 }
 
 static void draw_rules(void)
@@ -843,92 +874,103 @@ static void draw_rules(void)
           "CARDUME = 2 OU MAIS CRIATURAS VIZINHAS",
           "LADO A LADO (DIAGONAL NAO CONTA).",
           "",
-          "QUANDO AS 36 CRIATURAS ENCHEREM O RECIFE,",
-          "QUEM TIVER MAIS PONTOS VENCE!" },
-        { "1. MOVER (OPCIONAL): DESLIZE UMA CRIATURA",
-          "   DO RECIFE NA LINHA OU COLUNA, QUANTAS",
-          "   CASAS QUISER, SEM PULAR OUTRAS.",
-          "   (NAO EXISTE NO PRIMEIRO TURNO)",
-          "2. COLOCAR: PEGUE UMA CRIATURA DO VIVEIRO",
-          "   E PONHA EM QUALQUER CASA VAZIA.",
-          "3. REPOR: UMA CRIATURA DO ESTOQUE VAI",
-          "   PARA O VIVEIRO (AUTOMATICO).",
-          "QUALQUER JOGADOR PODE MOVER QUALQUER UMA." },
-        { "CRIATURAS NO CARDUME:  2  3  4  5   6",
-          "PONTOS:                1  3  6  10  15",
+          "QUANDO AS 36 CRIATURAS ENCHEREM O",
+          "RECIFE, QUEM TIVER MAIS PONTOS VENCE!" },
+        { "1 MOVER (OPCIONAL): DESLIZE UMA CRIATURA",
+          "  NA LINHA OU COLUNA, QUANTAS CASAS",
+          "  QUISER, SEM PULAR OUTRAS.",
+          "  (NAO EXISTE NO PRIMEIRO TURNO)",
+          "2 COLOCAR: PEGUE UMA CRIATURA DO",
+          "  VIVEIRO E PONHA NUMA CASA VAZIA.",
+          "3 REPOR: UMA CRIATURA DO ESTOQUE VAI",
+          "  PARA O VIVEIRO (AUTOMATICO).",
+          "QUALQUER UM PODE MOVER QUALQUER CRIATURA." },
+        { "CRIATURAS NO CARDUME  2  3  4  5   6",
+          "PONTOS                1  3  6  10  15",
           "",
           "UMA CRIATURA SOZINHA NAO VALE NADA.",
-          "UMA CRIATURA PODE CONTAR NUM CARDUME DE",
-          "COR E NUM DE ANIMAL AO MESMO TEMPO.",
+          "UMA CRIATURA PODE CONTAR NUM CARDUME",
+          "DE COR E NUM DE ANIMAL AO MESMO TEMPO.",
           "EMPATE: VENCE QUEM JOGOU EM SEGUNDO.",
           "REVANCHE: OS PAPEIS SAO TROCADOS.",
           "" },
         { "DIRECIONAL   MOVE O CURSOR",
           "x            CONFIRMA",
-          "o            VOLTA / CANCELA",
+          "o            VOLTA OU CANCELA",
           "^            PULA O MOVIMENTO",
-          "L1 / R1      TROCA A CRIATURA DO VIVEIRO",
+          "L1 R1        TROCA A CRIATURA",
           "START        PAUSA",
           "",
-          "NA TELA FINAL, DIRECIONAL ALTERNA ENTRE",
+          "NA TELA FINAL O DIRECIONAL MOSTRA",
           "OS CARDUMES DE CADA JOGADOR." },
     };
     char buf[32];
     int i;
-    draw_round_rect(24, 20, 592, 384, 16, RGBA(0, 20, 60, 190));
-    draw_text_shadow(48, 38, 4, RGB(120, 240, 255), titles[rules_page]);
+    dim_screen(60);
+    big_panel(18, 14, 604, 394);
+    draw_text(44, 30, 4, WHITE, titles[rules_page]);
     snprintf(buf, sizeof(buf), "%d/%d", rules_page + 1, RULES_PAGES);
-    draw_text_shadow(592 - text_width(buf, 2), 44, 2, RGB(200, 225, 255), buf);
-    for (i = 0; i < 9; i++)
-        draw_text_shadow(48, 92 + i * 28, 2, RGB(235, 245, 255), pages[rules_page][i]);
+    draw_text(596 - text_width(buf, 2), 40, 2, WHITE, buf);
+    for (i = 0; i < 9; i++) {
+        const char *ln = pages[rules_page][i];
+        /* coluna de botoes alinhada na pagina de controles */
+        if (rules_page == 3 && ln[0] && strlen(ln) > 13 && ln[12] == ' ') {
+            char key[16];
+            memcpy(key, ln, 12);
+            key[12] = 0;
+            draw_text(44, 80 + i * 28, 2, WHITE, key);
+            draw_text(230, 80 + i * 28, 2, WHITE, ln + 13);
+        } else {
+            draw_text(44, 80 + i * 28, 2, WHITE, ln);
+        }
+    }
     if (rules_page == 0) {
         for (i = 0; i < 6; i++)
-            draw_tile(MAKE_TILE(i, i), 140 + i * 62, 352, 44);
+            draw_tile(MAKE_TILE(i, i), 110 + i * 66, 340, 60, 52);
     } else if (rules_page == 2) {
-        /* exemplo: 3 azuis em linha = 3 pontos */
-        draw_tile(MAKE_TILE(COL_BLUE, ANI_CRAB), 120, 336, 50);
-        draw_tile(MAKE_TILE(COL_BLUE, ANI_STAR), 172, 336, 50);
-        draw_tile(MAKE_TILE(COL_BLUE, ANI_FISH), 224, 336, 50);
-        draw_text_shadow(290, 354, 2, RGB(255, 230, 120), "= 3 PONTOS PARA CORES");
+        draw_tile(MAKE_TILE(COL_BLUE, ANI_CRAB), 80, 334, 60, 52);
+        draw_tile(MAKE_TILE(COL_BLUE, ANI_STAR), 140, 334, 60, 52);
+        draw_tile(MAKE_TILE(COL_BLUE, ANI_FISH), 200, 334, 60, 52);
+        draw_text(276, 350, 2, WHITE, "= 3 PONTOS PARA CORES");
     }
-    draw_help("< > PAGINA   x PROXIMA   o SAIR", RGB(220, 235, 255));
+    draw_sprite_h(SPR_STARFISH, 548, 330, 80, WHITE);
+    draw_help("< > PAGINA   x PROXIMA   o SAIR", WHITE);
 }
 
 static void draw_pause(void)
 {
     static const char *items[3] = { "CONTINUAR", "COMO JOGAR", "SAIR PARA O MENU" };
     int i;
-    gfx_rect(0, 0, SCREEN_W, SCREEN_H, RGBA(0, 10, 30, 160));
-    draw_round_rect(150, 110, 340, 220, 18, RGBA(0, 30, 80, 230));
-    draw_text_center(SCREEN_W / 2, 132, 4, RGB(255, 255, 255), "PAUSA");
+    dim_screen(150);
+    big_panel(150, 100, 340, 240);
+    draw_text_center(SCREEN_W / 2, 122, 5, WHITE, "PAUSA");
+    draw_sprite_h(SPR_TURTLE, 440, 60, 84, WHITE);
     for (i = 0; i < 3; i++)
-        draw_menu_item(SCREEN_W / 2, 200 + i * 40, 2, items[i], i == pause_sel);
+        draw_menu_item(SCREEN_W / 2, 200 + i * 42, 3, items[i], i == pause_sel);
 }
 
 static void draw_result_card(int p, float y)
 {
     char buf[40];
-    int i, n = 0;
+    int i;
     const ScoreDetail *d = &result_detail[p];
     int view = game.role[p] == result_view;
-    draw_round_rect(PANEL_X, y, PANEL_W, 150, 10, view ? RGB(120, 240, 255) : RGBA(150, 200, 255, 90));
-    draw_round_rect(PANEL_X + 2, y + 2, PANEL_W - 4, 146, 9, RGBA(6, 24, 64, 235));
-    draw_text_shadow(PANEL_X + 10, y + 8, 2, RGB(255, 255, 255), player_name(p));
-    draw_text(PANEL_X + 10, y + 28, 2, RGB(140, 220, 255), role_name(game.role[p]));
+    card_box(y, 156, view);
+    draw_avatar(p, PANEL_X + 3, y + 6, 42, 40);
+    draw_text(PANEL_X + 48, y + 7, 2, WHITE, player_name(p));
+    draw_text(PANEL_X + 48, y + 28, 2, RGB(150, 220, 255), role_name(game.role[p]));
     snprintf(buf, sizeof(buf), "%d", d->total);
-    draw_text_shadow(PANEL_X + PANEL_W - 12 - text_width(buf, 4), y + 10, 4, RGB(255, 230, 120), buf);
+    draw_text(PANEL_X + PANEL_W - 8 - text_width(buf, 4), y + 10, 4, WHITE, buf);
     for (i = 0; i < 6; i++) {
-        float x = PANEL_X + 12 + (i % 2) * 104;
-        float yy = y + 54 + (i / 2) * 30;
+        float x = PANEL_X + 12 + (i % 2) * 98;
+        float yy = y + 56 + (i / 2) * 32;
         if (game.role[p] == ROLE_COLOR)
             draw_round_rect(x + 2, yy + 2, 20, 20, 5, creature_colors[i]);
         else
             draw_animal(i, x, yy, 24, RGB(235, 240, 255), RGB(6, 24, 64));
         snprintf(buf, sizeof(buf), "%d", d->group_points[i]);
-        draw_text(x + 32, yy + 5, 2, d->group_points[i] ? RGB(255, 255, 255) : RGB(110, 130, 170), buf);
-        n++;
+        draw_text(x + 32, yy + 4, 2, d->group_points[i] ? WHITE : RGB(110, 120, 140), buf);
     }
-    (void)n;
 }
 
 static void draw_result(void)
@@ -936,25 +978,27 @@ static void draw_result(void)
     char buf[48];
     int w = game_winner(&game);
     int s0 = result_detail[0].total, s1 = result_detail[1].total;
+    float tw;
     draw_board(0);
-    draw_result_card(0, 54);
-    draw_result_card(1, 212);
+    draw_result_card(0, 58);
+    draw_result_card(1, 222);
     if (num_humans == 1)
         snprintf(buf, sizeof(buf), w == 0 ? "VOCE VENCEU!" : "A CPU VENCEU!");
     else
         snprintf(buf, sizeof(buf), "%s VENCEU!", player_name(w));
-    draw_text_shadow(BOARD_X - 6, 14, 3, RGB(255, 230, 120), buf);
+    tw = (float)text_width(buf, 4);
+    draw_text(BOARD_X - 8, 12, 4, WHITE, buf);
+    draw_sprite_h(w == 0 ? SPR_CRAB : SPR_PUFFER, BOARD_X + tw + 4, 4 - (float)pulse(40, 0, 8), 48, WHITE);
     if (s0 == s1)
-        draw_text_shadow(PANEL_X - 10, 22, 1, RGB(220, 235, 255), "EMPATE: VENCE QUEM JOGOU EM 2O");
+        draw_text_shadow(PANEL_X - 30, 44, 1, WHITE, "EMPATE: VENCE QUEM JOGOU EM SEGUNDO");
     snprintf(buf, sizeof(buf), "CARDUMES DE %s", role_name(result_view));
-    draw_text_shadow(PANEL_X + 4, 372, 2, RGB(200, 225, 255), buf);
-    draw_text_shadow(PANEL_X + 4, 390, 1, RGB(170, 200, 235), "< > ALTERNA O DESTAQUE");
-    draw_help("x REVANCHE (PAPEIS TROCADOS)   o MENU", RGB(220, 235, 255));
+    draw_text(PANEL_X + 4, 386, 2, WHITE, buf);
+    draw_help("x REVANCHE (PAPEIS TROCADOS)   o MENU", WHITE);
 }
 
 void ui_draw(void)
 {
-    draw_background();
+    draw_background(state == ST_TITLE);
     switch (state) {
     case ST_TITLE:  draw_title(); break;
     case ST_SETUP:  draw_setup(); break;

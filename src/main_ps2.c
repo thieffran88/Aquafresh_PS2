@@ -8,14 +8,17 @@
 #include <iopcontrol.h>
 #include <timer.h>
 #include <stdio.h>
+#include <string.h>
 #include <gsKit.h>
 #include <dmaKit.h>
 #include <libpad.h>
 
 #include "gfx.h"
+#include "assets.h"
 #include "ui.h"
 
 static GSGLOBAL *gs;
+static GSTEXTURE tex[NUM_ATLASES];
 
 /* ------------------------------------------------------------------ video */
 
@@ -41,6 +44,36 @@ void gfx_rect_vgrad(float x, float y, float w, float h, Color top, Color bottom)
 {
     u64 t = to_gs(top), b = to_gs(bottom);
     gsKit_prim_quad_gouraud(gs, x, y, x + w, y, x, y + h, x + w, y + h, 0, t, t, b, b);
+}
+
+void gfx_sprite(int a, float x, float y, float w, float h,
+                float u0, float v0, float u1, float v1, Color mod)
+{
+    /* na modulacao do GS, 0x80 = 1.0 */
+    u64 c = GS_SETREG_RGBAQ((COL_R(mod) + 1) >> 1, (COL_G(mod) + 1) >> 1, (COL_B(mod) + 1) >> 1,
+                            (COL_A(mod) + 1) >> 1, 0x00);
+    gsKit_TexManager_bind(gs, &tex[a]);
+    gsKit_prim_sprite_texture(gs, &tex[a], x, y, u0, v0, x + w, y + h, u1, v1, 0, c);
+}
+
+/* Texturas T8 (paleta de 256 cores) embutidas no executavel; o
+ * TexManager do gsKit envia para a VRAM quando sao usadas. */
+static void textures_init(void)
+{
+    int i;
+    for (i = 0; i < NUM_ATLASES; i++) {
+        GSTEXTURE *t = &tex[i];
+        memset(t, 0, sizeof(*t));
+        t->Width = atlases[i].w;
+        t->Height = atlases[i].h;
+        t->PSM = GS_PSM_T8;
+        t->ClutPSM = GS_PSM_CT32;
+        t->Mem = (u32 *)atlases[i].data;
+        t->Clut = (u32 *)(atlases[i].data + atlases[i].w * atlases[i].h);
+        t->Filter = GS_FILTER_LINEAR;
+        t->ClutStorageMode = GS_CLUT_STORAGE_CSM1;
+        gsKit_setup_tbw(t);
+    }
 }
 
 static void video_init(void)
@@ -69,6 +102,8 @@ static void video_init(void)
     /* mistura normal: Cs*As + Cd*(1-As) */
     gsKit_set_primalpha(gs, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
     gsKit_set_test(gs, GS_ZTEST_OFF);
+    gsKit_TexManager_init(gs);
+    textures_init();
 }
 
 /* --------------------------------------------------------------- controle */
@@ -145,6 +180,7 @@ int main(int argc, char *argv[])
         ui_draw();
         gsKit_queue_exec(gs);
         gsKit_sync_flip(gs);
+        gsKit_TexManager_nextFrame(gs);
     }
     return 0;
 }

@@ -11,6 +11,7 @@
 #include "../src/gfx.h"
 #include "../src/ui.h"
 #include "../src/game.h"
+#include "../src/assets.h"
 
 static unsigned char fb[SCREEN_H][SCREEN_W][3];
 static long prim_count;
@@ -83,6 +84,74 @@ void gfx_tri(float x1, float y1, float x2, float y2, float x3, float y3, Color c
             else if (w0 >= 0 && w1 >= 0 && w2 >= 0 && (w0 > 0 || w1 > 0))
                 blend(x, y, c);
         }
+}
+
+/* ------------------------------------------------------------- texturas */
+
+static float pal_rgba[NUM_ATLASES][256][4];
+static int pal_ready;
+
+static void decode_palettes(void)
+{
+    int a, i;
+    for (a = 0; a < NUM_ATLASES; a++) {
+        const unsigned char *clut = atlases[a].data + atlases[a].w * atlases[a].h;
+        for (i = 0; i < 256; i++) {
+            /* desfaz a ordem CSM1 e o alfa 0..128 do GS */
+            int j = (i & ~0x18) | ((i & 0x08) << 1) | ((i & 0x10) >> 1);
+            pal_rgba[a][i][0] = clut[j * 4 + 0];
+            pal_rgba[a][i][1] = clut[j * 4 + 1];
+            pal_rgba[a][i][2] = clut[j * 4 + 2];
+            pal_rgba[a][i][3] = fminf(255.0f, clut[j * 4 + 3] * 255.0f / 128.0f);
+        }
+    }
+    pal_ready = 1;
+}
+
+static void texel(int a, int x, int y, float out[4])
+{
+    const AtlasDef *d = &atlases[a];
+    const float *p;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x >= d->w) x = d->w - 1;
+    if (y >= d->h) y = d->h - 1;
+    p = pal_rgba[a][d->data[y * d->w + x]];
+    out[0] = p[0]; out[1] = p[1]; out[2] = p[2]; out[3] = p[3];
+}
+
+void gfx_sprite(int a, float x, float y, float w, float h,
+                float u0, float v0, float u1, float v1, Color mod)
+{
+    int x0 = (int)floorf(x + 0.5f), y0 = (int)floorf(y + 0.5f);
+    int x1 = (int)floorf(x + w + 0.5f), y1 = (int)floorf(y + h + 0.5f);
+    int i, j, k;
+    prim_count++;
+    if (!pal_ready)
+        decode_palettes();
+    for (j = y0; j < y1; j++) {
+        for (i = x0; i < x1; i++) {
+            /* amostragem bilinear como o GS com filtro LINEAR */
+            float u = u0 + (i + 0.5f - x) / w * (u1 - u0) - 0.5f;
+            float v = v0 + (j + 0.5f - y) / h * (v1 - v0) - 0.5f;
+            int iu = (int)floorf(u), iv = (int)floorf(v);
+            float fu = u - iu, fv = v - iv, c[4], t[4][4];
+            int r, g, b, al;
+            texel(a, iu, iv, t[0]);
+            texel(a, iu + 1, iv, t[1]);
+            texel(a, iu, iv + 1, t[2]);
+            texel(a, iu + 1, iv + 1, t[3]);
+            for (k = 0; k < 4; k++)
+                c[k] = (t[0][k] * (1 - fu) + t[1][k] * fu) * (1 - fv) +
+                       (t[2][k] * (1 - fu) + t[3][k] * fu) * fv;
+            r = (int)(c[0] * COL_R(mod) / 255.0f);
+            g = (int)(c[1] * COL_G(mod) / 255.0f);
+            b = (int)(c[2] * COL_B(mod) / 255.0f);
+            al = (int)(c[3] * COL_A(mod) / 255.0f);
+            if (al > 0)
+                blend(i, j, RGBA(r, g, b, al));
+        }
+    }
 }
 
 static const char *outdir;
